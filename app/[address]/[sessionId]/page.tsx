@@ -40,6 +40,8 @@
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Chat, useAgentSDK, ModeStatusBar, PlanModeBanner, UlwModeBanner } from '@/components/chat'
+import { WorkspaceShell } from '@/components/dashboard/workspace-shell'
+import { DashboardPane } from '@/components/dashboard/dashboard-pane'
 import type { UI, ApprovalMode } from '@/components/chat/types'
 import { dedupeUI } from '@/components/chat/dedupe-ui'
 import { useChatStore } from '@/store/chat-store'
@@ -71,7 +73,9 @@ export default function ChatSessionPage() {
   useIdentity()
 
   const agentInfoMap = useAgentInfo([address])
-  const skills = agentInfoMap[address]?.skills
+  // Default to empty, not undefined: the dashboard's skill allowlist fails closed, so
+  // an absent list must mean "nothing is invocable yet", never "anything goes".
+  const skills = agentInfoMap[address]?.skills || []
 
   // Add agent if not in list
   useEffect(() => {
@@ -113,6 +117,7 @@ export default function ChatSessionPage() {
     setMode,
     reconnect,
     interrupt,
+    dashboardHtml,
   } = useAgentSDK({
     agentAddress: address,
     sessionId,
@@ -165,6 +170,12 @@ export default function ChatSessionPage() {
     send(content, images, files)
   }, [conversation, sessionId, address, createConversation, send, setConnectionError])
 
+  // Stable, so the pane's message listener isn't torn down and re-added every render.
+  const runSkill = useCallback(
+    (skill: string, args?: string) => handleSend(`/${skill}${args ? ` ${args}` : ''}`),
+    [handleSend]
+  )
+
   // Retry resends the last user message from the transcript — survives page reloads,
   // unlike transient state.
   const lastUserMessage = useMemo(() => {
@@ -195,8 +206,7 @@ export default function ChatSessionPage() {
 
   const isUlwActive = mode === 'ulw'
 
-  return (
-    <>
+  const chatPane = (
       <div className="flex flex-col flex-1 min-h-0 relative">
         {/* Plan mode banner */}
         {mode === 'plan' && (
@@ -246,6 +256,20 @@ export default function ChatSessionPage() {
           agentName={agentInfoMap[address]?.name || shortAddress(address)}
         />
       </div>
-    </>
+  )
+
+  return (
+    <WorkspaceShell
+      chat={chatPane}
+      hasDashboard={dashboardHtml !== null}
+      dashboard={
+        <DashboardPane
+          html={dashboardHtml}
+          skills={skills}
+          onRunSkill={runSkill}
+          className="w-full h-full border-0"
+        />
+      }
+    />
   )
 }
