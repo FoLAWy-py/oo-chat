@@ -21,6 +21,15 @@ const POLL_INTERVAL = 600000 // 10 minutes — info is cache-first + refetched o
 // storeCache, which solves the same survive-remount problem for sessions.
 const infoCache: Record<string, AgentInfo> = {}
 
+async function fetchInfo(address: string): Promise<AgentInfo> {
+  const deployed = await fetch('/api/deployment', { cache: 'no-store' })
+    .then(async response => response.ok ? response.json() as Promise<AgentInfo> : null)
+    .catch(() => null)
+
+  if (deployed?.address === address) return deployed
+  return fetchAgentInfo(address)
+}
+
 /**
  * Hook to fetch info for multiple agent addresses.
  * Returns a map of address → AgentInfo.
@@ -45,7 +54,7 @@ export function useAgentInfo(addresses: string[]): Record<string, AgentInfo> {
     if (addresses.length === 0) return
 
     for (const addr of addresses) {
-      fetchAgentInfo(addr).then(info => {
+      fetchInfo(addr).then(info => {
         infoCache[addr] = info // authoritative result — persist across remounts
         setInfoMap(prev => {
           const existing = prev[addr]

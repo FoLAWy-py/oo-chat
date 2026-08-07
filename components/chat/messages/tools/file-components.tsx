@@ -1,9 +1,9 @@
 'use client'
 
 import { Highlight, themes } from 'prism-react-renderer'
-import { 
-  HiOutlineCheck, 
-  HiOutlineX, 
+import {
+  HiOutlineCheck,
+  HiOutlineX,
   HiOutlineArrowsExpand
 } from 'react-icons/hi'
 import ReactMarkdown from 'react-markdown'
@@ -92,7 +92,7 @@ export function FileCodePeek({ content, filePath, isDiff, maxLines = 4, onClick 
               const lineContent = line.map(t => t.content).join('')
               const isAdd = isDiff && lineContent.trimStart().startsWith('+')
               const isDel = isDiff && lineContent.trimStart().startsWith('-')
-              
+
               const lineProps = getLineProps({ line })
               if (isAdd) lineProps.className = cn(lineProps.className, "bg-green-900/20 block w-full")
               else if (isDel) lineProps.className = cn(lineProps.className, "bg-red-900/20 block w-full")
@@ -109,7 +109,7 @@ export function FileCodePeek({ content, filePath, isDiff, maxLines = 4, onClick 
           </pre>
         )}
       </Highlight>
-      
+
       <div className="absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-neutral-50 to-transparent opacity-90" />
       <div className="absolute right-2 bottom-1.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
         <HiOutlineArrowsExpand className="w-3 h-3 text-neutral-400" />
@@ -143,7 +143,7 @@ export function FileFullView({ content, filePath, isDiff }: { content: string, f
               const lineContent = line.map(t => t.content).join('')
               const isAdd = isDiff && lineContent.trimStart().startsWith('+')
               const isDel = isDiff && lineContent.trimStart().startsWith('-')
-              
+
               const lineProps = getLineProps({ line })
               if (isAdd) lineProps.className = cn(lineProps.className, "bg-green-900/30 block w-full")
               else if (isDel) lineProps.className = cn(lineProps.className, "bg-red-900/30 block w-full")
@@ -229,8 +229,8 @@ interface CompactHeaderProps {
   needsApproval: boolean
 }
 
-export function CompactHeader({ 
-  toolName, fileName, Icon, status, timingMs, approvalSent, needsApproval 
+export function CompactHeader({
+  toolName, fileName, Icon, status, timingMs, approvalSent, needsApproval
 }: CompactHeaderProps) {
   return (
     <div className="flex items-center gap-2 mb-2 group cursor-default">
@@ -253,7 +253,7 @@ export function CompactHeader({
             <div className="w-1.5 h-1.5 rounded-full bg-neutral-300" />
           )}
         </div>
-        
+
         <Icon className="w-4 h-4 text-neutral-500 shrink-0" />
         <span className="text-sm font-bold text-neutral-700 tracking-tight shrink-0">{toolName}</span>
         <span className="text-xs font-bold text-neutral-500 truncate ml-1 font-mono tracking-tighter">{fileName}</span>

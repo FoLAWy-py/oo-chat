@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { 
-  HiOutlinePencil, 
-  HiOutlineCheck, 
+import {
+  HiOutlinePencil,
+  HiOutlineCheck,
   HiOutlineClipboard
 } from 'react-icons/hi'
 import { ApprovalButtons } from './approval-buttons'
@@ -18,7 +18,7 @@ export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: 
 
   const { name, args, status, timing_ms } = toolCall
   const filePath = (args?.file_path || args?.path || args?.filename || '') as string
-  
+
   const oldStr = (args?.old_string as string) || ''
   const newStr = (args?.new_string as string) || ''
   const diffContent = oldStr || newStr ? [
@@ -41,20 +41,20 @@ export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: 
 
   return (
     <div className="py-2.5">
-      <CompactHeader 
+      <CompactHeader
         toolName="Edit"
         fileName={getFileName(filePath)} Icon={HiOutlinePencil}
         status={status} timingMs={timing_ms} approvalSent={approvalSent}
         needsApproval={!!pendingApproval}
       />
-      
+
       <div className="ml-5 relative group/card">
         <FileCodePeek content={diffContent} filePath={filePath} isDiff onClick={() => setIsFullscreen(true)} />
-        
+
         {/* Quick actions */}
         {diffContent && (
           <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
-            <button 
+            <button
               onClick={handleCopy}
               className="p-1.5 bg-neutral-900/80 hover:bg-neutral-900 text-white rounded-lg shadow-lg border border-white/10 transition-all"
               title="Copy diff"
@@ -71,9 +71,9 @@ export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: 
 
       {!!pendingApproval && status === 'running' && (
         <div className="mt-4 ml-5">
-          <ApprovalButtons 
-            approvalSent={approvalSent as any} onApproval={handleApproval} 
-            toolName={name} description={pendingApproval.description} 
+          <ApprovalButtons
+            approvalSent={approvalSent as any} onApproval={handleApproval}
+            toolName={name} description={pendingApproval.description}
             batchRemaining={pendingApproval.batch_remaining}
           />
         </div>

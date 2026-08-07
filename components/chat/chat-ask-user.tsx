@@ -13,6 +13,7 @@ import {
 } from 'react-icons/hi'
 import { cn } from './utils'
 import { ASK_USER_SKIP_ANSWER, SkipButton } from './ask-user-skip'
+import { askUserOptionLabel, isAskUserOptionDisabled } from './ask-user-options'
 import type { PendingAskUser } from './types'
 
 interface ChatAskUserProps {
@@ -25,23 +26,27 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
   const { multi_select, input_type, fields } = askUser
   const question = typeof askUser.question === 'string' ? askUser.question : ''
   const options = Array.isArray(askUser.options) ? askUser.options : []
+  const disabledOptions = new Set(
+    Array.isArray(askUser.disabled_options) ? askUser.disabled_options : []
+  )
   const [selected, setSelected] = useState<string[]>([])
   const [textInput, setTextInput] = useState('')
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
   const hasOptions = options.length > 0
-  const isCredentialPrompt = input_type === 'credentials' || question.includes('账号和密码') || question.includes('账号或密码')
+  const isCredentialPrompt = input_type === 'credentials'
   const formFields = fields && fields.length > 0
     ? fields
     : isCredentialPrompt
       ? [
-          { name: 'username', label: '账号', type: 'text' as const, required: true, autocomplete: 'username' },
-          { name: 'password', label: '密码', type: 'password' as const, required: true, autocomplete: 'current-password' },
+          { name: 'username', label: 'Email or username', type: 'text' as const, required: true, autocomplete: 'username' },
+          { name: 'password', label: 'Password', type: 'password' as const, required: true, autocomplete: 'current-password' },
         ]
       : []
   const hasFieldForm = formFields.length > 0
   const hasMissingRequiredField = formFields.some(field => field.required && !fieldValues[field.name]?.trim())
 
   const handleOptionClick = (option: string) => {
+    if (isAskUserOptionDisabled(option, disabledOptions)) return
     if (multi_select) {
       setSelected(prev =>
         prev.includes(option)
@@ -124,7 +129,7 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
                 className="flex items-center gap-2 rounded-md bg-neutral-900 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400 active:scale-95"
               >
                 <HiOutlinePaperAirplane className="w-4 h-4 rotate-90" />
-                提交
+                Submit
               </button>
             </div>
           </div>
@@ -133,19 +138,26 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
             <div className="grid grid-cols-1 gap-1.5">
               {options.map((option, idx) => {
                 const isSelected = selected.includes(option)
+                const isDisabled = isAskUserOptionDisabled(option, disabledOptions)
                 return (
                   <button
                     key={idx}
                     onClick={() => handleOptionClick(option)}
+                    disabled={isDisabled}
+                    aria-disabled={isDisabled}
                     className={cn(
                       'group flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-all duration-200',
-                      isSelected
+                      isDisabled
+                        ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-400 opacity-70'
+                        : isSelected
                         ? 'border-neutral-300 bg-neutral-50 text-neutral-900'
                         : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900'
                     )}
                   >
                     <div className="shrink-0">
-                      {multi_select ? (
+                      {isDisabled ? (
+                        <div className="h-5 w-5 rounded-full border-2 border-neutral-200 bg-neutral-100" />
+                      ) : multi_select ? (
                         isSelected ? (
                           <HiOutlineCheckCircle className="w-5 h-5 text-neutral-900" />
                         ) : (
@@ -156,7 +168,7 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
                       )}
                     </div>
                     <span className={cn(isSelected ? 'font-bold' : 'font-medium')}>
-                      {option}
+                      {askUserOptionLabel(option)}
                     </span>
                   </button>
                 )

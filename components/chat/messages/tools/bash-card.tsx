@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from 'react'
 import type { ToolCallUI, PendingApproval } from '../../types'
-import { 
-  HiOutlineChevronRight, 
-  HiOutlineChevronDown, 
+import {
+  HiOutlineChevronRight,
+  HiOutlineChevronDown,
   HiOutlineTerminal,
   HiOutlineCheck,
   HiOutlineX,
@@ -81,8 +81,8 @@ function highlightBash(command: string): React.ReactNode[] {
       } else {
         const wordMatch = remaining.match(/^[\w./~@:%-]+/)
         if (wordMatch) {
-          const isCommand = tokens.length === 0 || 
-            (tokens.length > 0 && typeof tokens[tokens.length-1] === 'object' && 
+          const isCommand = tokens.length === 0 ||
+            (tokens.length > 0 && typeof tokens[tokens.length-1] === 'object' &&
              (tokens[tokens.length-1] as any)?.props?.className === colors.operator)
           tokens.push(<span key={key++} className={isCommand ? colors.command : colors.argument}>{wordMatch[0]}</span>)
           remaining = remaining.slice(wordMatch[0].length)

@@ -17,6 +17,12 @@ export interface UserProfile {
   balance_usd: number
 }
 
+export interface PendingMessage {
+  content: string
+  images?: string[]
+  files?: import('@/components/chat/types').FileAttachment[]
+}
+
 interface ChatState {
   // Persisted
   conversations: Conversation[]
@@ -26,7 +32,7 @@ interface ChatState {
   // Auth state (persisted)
   userProfile: UserProfile | null
   // Transient state (not persisted)
-  pendingMessage: string | null  // Message to send after navigation
+  pendingMessage: PendingMessage | null  // Full first-turn payload sent after navigation
   _hasHydrated: boolean
 }
 
@@ -40,8 +46,8 @@ interface ChatActions {
   setApiKey: (apiKey: string) => void
   setUserProfile: (profile: UserProfile | null) => void
   clearActive: () => void
-  setPendingMessage: (message: string | null) => void
-  consumePendingMessage: () => string | null
+  setPendingMessage: (message: PendingMessage | null) => void
+  consumePendingMessage: () => PendingMessage | null
 }
 
 type ChatStore = ChatState & ChatActions
@@ -155,8 +161,8 @@ export const useChatStore = create<ChatStore>()(
       onRehydrateStorage: () => () => {
         useChatStore.setState({ _hasHydrated: true })
       },
-      // Exclude transient state from persistence. Nothing here carries
-      // images — the transcript (and its sanitizing) lives in the SDK store.
+      // Exclude the transient first-turn payload from persistence. It can carry
+      // base64 attachments and is consumed immediately after route navigation.
       partialize: (state) => ({
         conversations: state.conversations,
         activeSessionId: state.activeSessionId,
