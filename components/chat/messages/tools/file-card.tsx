@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { 
-  HiOutlineCheck, 
+import {
+  HiOutlineCheck,
   HiOutlineClipboard
 } from 'react-icons/hi'
 import { ApprovalButtons } from './approval-buttons'
@@ -18,7 +18,7 @@ export function FileCard({ toolCall, pendingApproval, onApprovalResponse }: any)
   const { name, args, status, result, timing_ms } = toolCall
   const filePath = (args?.file_path || args?.path || args?.filename || '') as string
   const content = (name.toLowerCase() === 'write' ? args?.content : result) || ''
-  
+
   const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: any) => {
     if (approvalSent) return
     setApprovalSent(approved ? 'approved' : mode === 'reject_soft' ? 'skipped' : 'stopped')
@@ -34,19 +34,19 @@ export function FileCard({ toolCall, pendingApproval, onApprovalResponse }: any)
 
   return (
     <div className="py-2.5">
-      <CompactHeader 
+      <CompactHeader
         toolName={name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()}
         fileName={getFileName(filePath)} Icon={getFileIcon(name)}
         status={status} timingMs={timing_ms} approvalSent={approvalSent}
         needsApproval={!!pendingApproval}
       />
-      
+
       <div className="ml-5 relative group/card">
         <FileCodePeek content={content} filePath={filePath} onClick={() => setIsFullscreen(true)} />
-        
+
         {content && (
           <div className="absolute top-2 right-2 flex gap-1.5 opacity-100 lg:opacity-0 lg:group-hover/card:opacity-100 transition-opacity">
-            <button 
+            <button
               onClick={handleCopy}
               className="p-1.5 bg-neutral-900/80 hover:bg-neutral-900 text-white rounded-lg shadow-lg border border-white/10 transition-all"
               title="Copy content"
@@ -63,9 +63,9 @@ export function FileCard({ toolCall, pendingApproval, onApprovalResponse }: any)
 
       {!!pendingApproval && status === 'running' && (
         <div className="mt-4 ml-5">
-          <ApprovalButtons 
-            approvalSent={approvalSent as any} onApproval={handleApproval} 
-            toolName={name} description={pendingApproval.description} 
+          <ApprovalButtons
+            approvalSent={approvalSent as any} onApproval={handleApproval}
+            toolName={name} description={pendingApproval.description}
             batchRemaining={pendingApproval.batch_remaining}
           />
         </div>

@@ -13,11 +13,11 @@ interface ModalProps {
   maxWidth?: string
 }
 
-export function Modal({ 
-  isOpen, 
-  onClose, 
-  title, 
-  children, 
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  children,
   className,
   maxWidth = 'max-w-5xl'
 }: ModalProps) {
@@ -44,13 +44,13 @@ export function Modal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 md:p-12">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-neutral-900/40 backdrop-blur-sm transition-opacity animate-in fade-in duration-300" 
+      <div
+        className="absolute inset-0 bg-neutral-900/40 backdrop-blur-sm transition-opacity animate-in fade-in duration-300"
         onClick={onClose}
       />
-      
+
       {/* Modal Content */}
-      <div 
+      <div
         ref={modalRef}
         className={cn(
           "relative w-full h-full flex flex-col bg-[#1e1e1e] rounded-2xl border border-neutral-800 shadow-2xl overflow-hidden animate-in zoom-in-95 fade-in duration-300",

@@ -67,9 +67,9 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
 
   const handleSubmit = (customValue?: string) => {
     if (!isPending) return
-    
+
     const valueToSubmit = customValue || textInput.trim()
-    
+
     if (multiSelect && selected.length > 0 && !customValue) {
       setResponded(true)
       onAskUserResponse!(selected)
@@ -272,7 +272,7 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                     <div className="h-px flex-1 bg-neutral-100" />
                   </div>
                 )}
-                
+
                 <div className="flex gap-2 bg-white p-1.5 rounded-xl border border-neutral-200 shadow-sm focus-within:border-neutral-400 focus-within:ring-4 focus-within:ring-neutral-500/5 transition-all">
                   <input
                     type="text"

@@ -17,7 +17,8 @@
  *
  * Lifecycle:
  *   1. Page mounts → useIdentity ensures keypair → useAgentSDK connects
- *   2. If pendingMessage in store (from landing page) → consume + send immediately
+ *   2. If pendingMessage in store (from landing page) → consume its complete
+ *      text/image/file payload and send immediately
  *   3. Agent streams UI events → hookUI updates (sidebar title synced to chat-store)
  *   4. On page refresh → the SDK's per-session store hydrates the transcript
  *      → useAgentSDK.checkSession polls to detect if agent still running
@@ -137,7 +138,7 @@ export default function ChatSessionPage() {
     // Then send the pending message
     const pendingMessage = consumePendingMessage()
     if (pendingMessage) {
-      send(pendingMessage)
+      send(pendingMessage.content, pendingMessage.images, pendingMessage.files)
     }
   }, [sessionId, initialMode, initialTurns, consumePendingMessage, send, setMode])
 

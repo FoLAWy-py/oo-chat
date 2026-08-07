@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { HiChevronDown, HiChevronUp } from 'react-icons/hi2'
 import { ChatInput, ModeStatusBar } from '@/components/chat'
-import type { ApprovalMode } from '@/components/chat/types'
+import type { ApprovalMode, FileAttachment } from '@/components/chat/types'
 import { useChatStore } from '@/store/chat-store'
 import { useIdentity } from '@/hooks/use-identity'
 import { useAgentInfo, shortAddress, agentInitial } from '@/hooks/use-agent-info'
@@ -93,10 +93,10 @@ export default function AgentLandingPage() {
   const infoMap = useAgentInfo([address])
   const agentInfo = infoMap[address]
 
-  const handleSend = useCallback((content: string, _images?: string[]) => {
+  const handleSend = useCallback((content: string, images?: string[], files?: FileAttachment[]) => {
     const sessionId = crypto.randomUUID()
     createConversation(sessionId, address)
-    setPendingMessage(content)
+    setPendingMessage({ content, images, files })
 
     const params = new URLSearchParams()
     if (mode !== 'safe') {

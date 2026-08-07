@@ -33,13 +33,13 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
   const [textInput, setTextInput] = useState('')
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
   const hasOptions = options.length > 0
-  const isCredentialPrompt = input_type === 'credentials' || question.includes('账号和密码') || question.includes('账号或密码')
+  const isCredentialPrompt = input_type === 'credentials'
   const formFields = fields && fields.length > 0
     ? fields
     : isCredentialPrompt
       ? [
-          { name: 'username', label: '账号', type: 'text' as const, required: true, autocomplete: 'username' },
-          { name: 'password', label: '密码', type: 'password' as const, required: true, autocomplete: 'current-password' },
+          { name: 'username', label: 'Email or username', type: 'text' as const, required: true, autocomplete: 'username' },
+          { name: 'password', label: 'Password', type: 'password' as const, required: true, autocomplete: 'current-password' },
         ]
       : []
   const hasFieldForm = formFields.length > 0
@@ -129,7 +129,7 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
                 className="flex items-center gap-2 rounded-md bg-neutral-900 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400 active:scale-95"
               >
                 <HiOutlinePaperAirplane className="w-4 h-4 rotate-90" />
-                提交
+                Submit
               </button>
             </div>
           </div>
