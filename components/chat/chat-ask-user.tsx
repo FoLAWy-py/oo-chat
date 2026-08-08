@@ -13,7 +13,13 @@ import {
 } from 'react-icons/hi'
 import { cn } from './utils'
 import { ASK_USER_SKIP_ANSWER, SkipButton } from './ask-user-skip'
-import { askUserOptionLabel, isAskUserOptionDisabled } from './ask-user-options'
+import {
+  askUserOptionLabel,
+  askUserOptionOpenUrl,
+  isAskUserOptionDisabled,
+  OOCHAT_OPENED_WINDOW_NAME,
+  runAskUserOptionSideEffect,
+} from './ask-user-options'
 import type { PendingAskUser, AskUserResponseHandler } from './types'
 
 interface ChatAskUserProps {
@@ -81,6 +87,7 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
           : [...prev, option]
       )
     } else {
+      runAskUserOptionSideEffect(option)
       onResponse(option)
     }
   }
@@ -207,21 +214,17 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
               {options.map((option, idx) => {
                 const isSelected = selected.includes(option)
                 const isDisabled = isAskUserOptionDisabled(option, disabledOptions)
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => handleOptionClick(option)}
-                    disabled={isDisabled || isUploadingReplacement}
-                    aria-disabled={isDisabled || isUploadingReplacement}
-                    className={cn(
-                      'group flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-all duration-200',
-                      isDisabled
-                        ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-400 opacity-70'
-                        : isSelected
-                        ? 'border-neutral-300 bg-neutral-50 text-neutral-900'
-                        : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900'
-                    )}
-                  >
+                const openUrl = askUserOptionOpenUrl(option)
+                const optionClassName = cn(
+                  'group flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-all duration-200',
+                  isDisabled
+                    ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-400 opacity-70'
+                    : isSelected
+                    ? 'border-neutral-300 bg-neutral-50 text-neutral-900'
+                    : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900'
+                )
+                const optionContent = (
+                  <>
                     <div className="shrink-0">
                       {isDisabled ? (
                         <div className="h-5 w-5 rounded-full border-2 border-neutral-200 bg-neutral-100" />
@@ -238,6 +241,27 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
                     <span className={cn(isSelected ? 'font-bold' : 'font-medium')}>
                       {askUserOptionLabel(option)}
                     </span>
+                  </>
+                )
+                return openUrl && !isDisabled && !isUploadingReplacement ? (
+                  <a
+                    key={idx}
+                    href={openUrl}
+                    target={OOCHAT_OPENED_WINDOW_NAME}
+                    onClick={() => handleOptionClick(option)}
+                    className={optionClassName}
+                  >
+                    {optionContent}
+                  </a>
+                ) : (
+                  <button
+                    key={idx}
+                    onClick={() => handleOptionClick(option)}
+                    disabled={isDisabled || isUploadingReplacement}
+                    aria-disabled={isDisabled || isUploadingReplacement}
+                    className={optionClassName}
+                  >
+                    {optionContent}
                   </button>
                 )
               })}

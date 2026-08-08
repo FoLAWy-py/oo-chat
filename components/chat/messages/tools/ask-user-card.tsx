@@ -19,7 +19,13 @@ import {
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { ASK_USER_SKIP_ANSWER, SkipButton } from '../../ask-user-skip'
-import { askUserOptionLabel, isAskUserOptionDisabled } from '../../ask-user-options'
+import {
+  askUserOptionLabel,
+  askUserOptionOpenUrl,
+  isAskUserOptionDisabled,
+  OOCHAT_OPENED_WINDOW_NAME,
+  runAskUserOptionSideEffect,
+} from '../../ask-user-options'
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -87,6 +93,7 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
           : [...prev, option]
       )
     } else {
+      runAskUserOptionSideEffect(option)
       setResponded(true)
       onAskUserResponse!(option)
     }
@@ -280,21 +287,17 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                   {options.map((option, idx) => {
                     const isSelected = selected.includes(option)
                     const isDisabled = isAskUserOptionDisabled(option, disabledOptions)
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => handleOptionClick(option)}
-                        disabled={isDisabled || isUploadingReplacement}
-                        aria-disabled={isDisabled || isUploadingReplacement}
-                        className={cn(
-                          "w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl transition-all duration-200 border group/item",
-                          isDisabled
-                            ? "cursor-not-allowed bg-neutral-50 text-neutral-400 border-neutral-100 opacity-70"
-                            : isSelected
-                            ? "bg-neutral-100 text-neutral-900 border-neutral-400 shadow-sm"
-                            : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50"
-                        )}
-                      >
+                    const openUrl = askUserOptionOpenUrl(option)
+                    const optionClassName = cn(
+                      "w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl transition-all duration-200 border group/item",
+                      isDisabled
+                        ? "cursor-not-allowed bg-neutral-50 text-neutral-400 border-neutral-100 opacity-70"
+                        : isSelected
+                        ? "bg-neutral-100 text-neutral-900 border-neutral-400 shadow-sm"
+                        : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50"
+                    )
+                    const optionContent = (
+                      <>
                         <div className="shrink-0">
                           {isDisabled ? (
                             <div className="w-5 h-5 rounded-full border-2 border-neutral-200 bg-neutral-100" />
@@ -314,6 +317,27 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                         )}>
                           {askUserOptionLabel(option)}
                         </span>
+                      </>
+                    )
+                    return openUrl && !isDisabled && !isUploadingReplacement ? (
+                      <a
+                        key={idx}
+                        href={openUrl}
+                        target={OOCHAT_OPENED_WINDOW_NAME}
+                        onClick={() => handleOptionClick(option)}
+                        className={optionClassName}
+                      >
+                        {optionContent}
+                      </a>
+                    ) : (
+                      <button
+                        key={idx}
+                        onClick={() => handleOptionClick(option)}
+                        disabled={isDisabled || isUploadingReplacement}
+                        aria-disabled={isDisabled || isUploadingReplacement}
+                        className={optionClassName}
+                      >
+                        {optionContent}
                       </button>
                     )
                   })}
