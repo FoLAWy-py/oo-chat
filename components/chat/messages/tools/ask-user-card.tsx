@@ -3,9 +3,9 @@
 // In-transcript card for ask_user tool calls: option buttons, free-text reply,
 // or QR sign-in modal. QR modal is closable (X/backdrop) and every pending
 // state offers ask-user-skip so the agent can proceed without an answer.
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { createPortal } from 'react-dom'
-import type { ToolCallUI, PendingAskUser } from '../../types'
+import type { ToolCallUI, PendingAskUser, AskUserResponseHandler } from '../../types'
 import {
   HiOutlineChevronRight,
   HiOutlineChevronDown,
@@ -28,8 +28,25 @@ function cn(...inputs: ClassValue[]) {
 interface AskUserCardProps {
   toolCall: ToolCallUI
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: (answer: string | string[]) => void
+  onAskUserResponse?: AskUserResponseHandler
   qrImage?: string
+}
+
+const REPLACEMENT_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const MAX_REPLACEMENT_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_REPLACEMENT_TOTAL_BYTES = 80 * 1024 * 1024
+
+function isChangeImagesOption(option: string): boolean {
+  return /^(change images|\u66f4\u6362\u56fe\u7247)$/i.test(option.trim())
+}
+
+function readImageAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error || new Error(`Could not read ${file.name}`))
+    reader.readAsDataURL(file)
+  })
 }
 
 export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrImage }: AskUserCardProps) {
@@ -42,6 +59,10 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
   const [zoomed, setZoomed] = useState(false)
   const [qrDismissed, setQrDismissed] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [replacementOption, setReplacementOption] = useState('')
+  const [replacementError, setReplacementError] = useState('')
+  const [isUploadingReplacement, setIsUploadingReplacement] = useState(false)
+  const replacementInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => setMounted(true), [])
 
   const question = (args?.question as string) || ''
@@ -53,6 +74,12 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
 
   const handleOptionClick = (option: string) => {
     if (!isPending || isAskUserOptionDisabled(option, disabledOptions)) return
+    if (!multiSelect && isChangeImagesOption(option)) {
+      setReplacementOption(option)
+      setReplacementError('')
+      replacementInputRef.current?.click()
+      return
+    }
     if (multiSelect) {
       setSelected(prev =>
         prev.includes(option)
@@ -62,6 +89,39 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
     } else {
       setResponded(true)
       onAskUserResponse!(option)
+    }
+  }
+
+  const handleReplacementImages = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (!selectedFiles.length || !replacementOption || !isPending) return
+    const maximumImages = /linkedin/i.test(question) ? 20 : 9
+    if (selectedFiles.length > maximumImages) {
+      setReplacementError(`Select no more than ${maximumImages} images.`)
+      return
+    }
+    const invalid = selectedFiles.find(file =>
+      !REPLACEMENT_IMAGE_TYPES.has(file.type) || file.size === 0 || file.size > MAX_REPLACEMENT_IMAGE_BYTES
+    )
+    if (invalid) {
+      setReplacementError('Use PNG, JPEG, or WebP images up to 10 MB each.')
+      return
+    }
+    if (selectedFiles.reduce((total, file) => total + file.size, 0) > MAX_REPLACEMENT_TOTAL_BYTES) {
+      setReplacementError('The selected images must be 80 MB or less in total.')
+      return
+    }
+    setIsUploadingReplacement(true)
+    setReplacementError('')
+    try {
+      const images = await Promise.all(selectedFiles.map(readImageAsDataUrl))
+      setResponded(true)
+      onAskUserResponse!(replacementOption, images)
+    } catch {
+      setReplacementError('The selected images could not be read. Please choose them again.')
+    } finally {
+      setIsUploadingReplacement(false)
     }
   }
 
@@ -97,6 +157,15 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
 
   return (
     <div className="py-2">
+      <input
+        ref={replacementInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        onChange={handleReplacementImages}
+        className="hidden"
+        aria-label="Select replacement images"
+      />
       {/* Header */}
       <div
         className="flex items-center gap-2 cursor-pointer group"
@@ -215,8 +284,8 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                       <button
                         key={idx}
                         onClick={() => handleOptionClick(option)}
-                        disabled={isDisabled}
-                        aria-disabled={isDisabled}
+                        disabled={isDisabled || isUploadingReplacement}
+                        aria-disabled={isDisabled || isUploadingReplacement}
                         className={cn(
                           "w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl transition-all duration-200 border group/item",
                           isDisabled
@@ -261,6 +330,17 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                     </div>
                   )}
                 </div>
+              )}
+
+              {replacementError && (
+                <p role="alert" className="px-1 text-xs font-medium text-red-600">
+                  {replacementError}
+                </p>
+              )}
+              {isUploadingReplacement && (
+                <p role="status" className="px-1 text-xs font-medium text-neutral-500">
+                  Uploading replacement images…
+                </p>
               )}
 
               {/* Input Fallback (always show or show if no options) */}

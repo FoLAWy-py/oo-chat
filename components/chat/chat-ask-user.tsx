@@ -4,7 +4,7 @@
 // the chat input area when the agent is waiting). Same skip semantics as the
 // cards via ask-user-skip.
 
-import { useState } from 'react'
+import { useRef, useState, type ChangeEvent } from 'react'
 import {
   HiOutlineCheckCircle,
   HiOutlineCheck,
@@ -14,12 +14,29 @@ import {
 import { cn } from './utils'
 import { ASK_USER_SKIP_ANSWER, SkipButton } from './ask-user-skip'
 import { askUserOptionLabel, isAskUserOptionDisabled } from './ask-user-options'
-import type { PendingAskUser } from './types'
+import type { PendingAskUser, AskUserResponseHandler } from './types'
 
 interface ChatAskUserProps {
   askUser: PendingAskUser
-  onResponse: (answer: string | string[]) => void
+  onResponse: AskUserResponseHandler
   className?: string
+}
+
+const REPLACEMENT_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const MAX_REPLACEMENT_IMAGE_BYTES = 10 * 1024 * 1024
+const MAX_REPLACEMENT_TOTAL_BYTES = 80 * 1024 * 1024
+
+function isChangeImagesOption(option: string): boolean {
+  return /^(change images|\u66f4\u6362\u56fe\u7247)$/i.test(option.trim())
+}
+
+function readImageAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error || new Error(`Could not read ${file.name}`))
+    reader.readAsDataURL(file)
+  })
 }
 
 export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps) {
@@ -32,6 +49,10 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
   const [selected, setSelected] = useState<string[]>([])
   const [textInput, setTextInput] = useState('')
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
+  const [replacementOption, setReplacementOption] = useState('')
+  const [replacementError, setReplacementError] = useState('')
+  const [isUploadingReplacement, setIsUploadingReplacement] = useState(false)
+  const replacementInputRef = useRef<HTMLInputElement>(null)
   const hasOptions = options.length > 0
   const isCredentialPrompt = input_type === 'credentials'
   const formFields = fields && fields.length > 0
@@ -47,6 +68,12 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
 
   const handleOptionClick = (option: string) => {
     if (isAskUserOptionDisabled(option, disabledOptions)) return
+    if (!multi_select && isChangeImagesOption(option)) {
+      setReplacementOption(option)
+      setReplacementError('')
+      replacementInputRef.current?.click()
+      return
+    }
     if (multi_select) {
       setSelected(prev =>
         prev.includes(option)
@@ -55,6 +82,38 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
       )
     } else {
       onResponse(option)
+    }
+  }
+
+  const handleReplacementImages = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files || [])
+    event.target.value = ''
+    if (!selectedFiles.length || !replacementOption) return
+    const maximumImages = /linkedin/i.test(question) ? 20 : 9
+    if (selectedFiles.length > maximumImages) {
+      setReplacementError(`Select no more than ${maximumImages} images.`)
+      return
+    }
+    const invalid = selectedFiles.find(file =>
+      !REPLACEMENT_IMAGE_TYPES.has(file.type) || file.size === 0 || file.size > MAX_REPLACEMENT_IMAGE_BYTES
+    )
+    if (invalid) {
+      setReplacementError('Use PNG, JPEG, or WebP images up to 10 MB each.')
+      return
+    }
+    if (selectedFiles.reduce((total, file) => total + file.size, 0) > MAX_REPLACEMENT_TOTAL_BYTES) {
+      setReplacementError('The selected images must be 80 MB or less in total.')
+      return
+    }
+    setIsUploadingReplacement(true)
+    setReplacementError('')
+    try {
+      const images = await Promise.all(selectedFiles.map(readImageAsDataUrl))
+      onResponse(replacementOption, images)
+    } catch {
+      setReplacementError('The selected images could not be read. Please choose them again.')
+    } finally {
+      setIsUploadingReplacement(false)
     }
   }
 
@@ -92,6 +151,15 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
       'mx-4 mb-5 max-w-xl overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm animate-in fade-in slide-in-from-bottom-3 duration-500',
       className
     )}>
+      <input
+        ref={replacementInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        onChange={handleReplacementImages}
+        className="hidden"
+        aria-label="Select replacement images"
+      />
       {/* Header-like question area */}
       <div className="border-b border-neutral-100 px-4 py-3">
         <div className="flex items-start gap-3">
@@ -143,8 +211,8 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
                   <button
                     key={idx}
                     onClick={() => handleOptionClick(option)}
-                    disabled={isDisabled}
-                    aria-disabled={isDisabled}
+                    disabled={isDisabled || isUploadingReplacement}
+                    aria-disabled={isDisabled || isUploadingReplacement}
                     className={cn(
                       'group flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-all duration-200',
                       isDisabled
@@ -191,6 +259,17 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
                   Confirm Selection
                 </button>
               </div>
+            )}
+
+            {replacementError && (
+              <p role="alert" className="px-1 pt-2 text-xs font-medium text-red-600">
+                {replacementError}
+              </p>
+            )}
+            {isUploadingReplacement && (
+              <p role="status" className="px-1 pt-2 text-xs font-medium text-neutral-500">
+                Uploading replacement images…
+              </p>
             )}
           </div>
         )}

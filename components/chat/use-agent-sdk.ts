@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAgentForHuman, type ChatItem, type ApprovalMode } from 'connectonion/react'
-import type { PendingAskUser, PendingApproval, PendingOnboard, PendingUlwTurnsReached, PendingPlanReview } from './types'
+import type { FileAttachment, PendingAskUser, PendingApproval, PendingOnboard, PendingUlwTurnsReached, PendingPlanReview } from './types'
 import { dedupeUI } from './dedupe-ui'
 import { mergeServerEvidence } from './server-evidence'
 import { prepareAgentSessionStorage } from './migrate-agent-session'
@@ -52,7 +52,7 @@ interface UseAgentSDKReturn {
   send: (content: string, images?: string[], files?: import('./types').FileAttachment[]) => void
   /** Gracefully stop a running agent: it finishes the current step and returns a closing message */
   interrupt: () => void
-  respondToAskUser: (answer: string | string[]) => void
+  respondToAskUser: (answer: string | string[], images?: string[], files?: FileAttachment[]) => void
   respondToApproval: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
   respondToUlwTurnsReached: (action: 'continue' | 'switch_mode', options?: { turns?: number; mode?: ApprovalMode }) => void
   respondToPlanReview: (message: string) => void
@@ -400,8 +400,13 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
     void stopServerSession(sessionId)
   }, [sendMessage, connectionState, sessionId])
 
-  const respondToAskUser = useCallback((answer: string | string[]) => {
-    sendMessage({ type: 'ASK_USER_RESPONSE', answer: Array.isArray(answer) ? answer.join(', ') : answer })
+  const respondToAskUser = useCallback((answer: string | string[], images?: string[], files?: FileAttachment[]) => {
+    sendMessage({
+      type: 'ASK_USER_RESPONSE',
+      answer: Array.isArray(answer) ? answer.join(', ') : answer,
+      ...(images?.length ? { images } : {}),
+      ...(files?.length ? { files } : {}),
+    })
   }, [sendMessage])
 
   const respondToApproval = useCallback((approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => {

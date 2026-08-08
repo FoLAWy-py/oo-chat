@@ -46,6 +46,12 @@ export interface FileAttachment {
   dataUrl: string
 }
 
+export type AskUserResponseHandler = (
+  answer: string | string[],
+  images?: string[],
+  files?: FileAttachment[],
+) => void
+
 export interface Message {
   id: string
   role: 'user' | 'assistant' | 'system'
@@ -320,7 +326,7 @@ export interface ChatProps {
   emptyStateDescription?: string
   suggestions?: string[]
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: (answer: string | string[]) => void
+  onAskUserResponse?: AskUserResponseHandler
   pendingApproval?: PendingApproval | null
   onApprovalResponse?: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
   pendingOnboard?: PendingOnboard | null
@@ -381,7 +387,7 @@ export interface ChatMessagesProps {
   pendingApproval?: PendingApproval | null
   onApprovalResponse?: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: (answer: string | string[]) => void
+  onAskUserResponse?: AskUserResponseHandler
   pendingOnboard?: PendingOnboard | null
   onOnboardSubmit?: (options: { inviteCode?: string; payment?: number }) => void
   pendingUlwTurnsReached?: PendingUlwTurnsReached | null

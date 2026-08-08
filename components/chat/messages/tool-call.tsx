@@ -1,6 +1,6 @@
 'use client'
 
-import type { ToolCallUI, PendingApproval, PendingAskUser, PendingPlanReview } from '../types'
+import type { ToolCallUI, PendingApproval, PendingAskUser, PendingPlanReview, AskUserResponseHandler } from '../types'
 import { BashCard, FileCard, FileDiffCard, GrepCard, GenericCard, AskUserCard, LoginCard, BackgroundCard, PlanCard, GuideCard, EnterPlanModeCard, BrowserCard, BROWSER_TOOLS } from './tools'
 
 interface ToolCallProps {
@@ -8,7 +8,7 @@ interface ToolCallProps {
   pendingApproval?: PendingApproval | null
   onApprovalResponse?: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: (answer: string | string[]) => void
+  onAskUserResponse?: AskUserResponseHandler
   qrImage?: string
   pendingPlanReview?: PendingPlanReview | null
   onPlanReviewResponse?: (message: string) => void

@@ -6,7 +6,7 @@
 // ask-user-skip — the chat must never deadlock on an unanswered prompt.
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import type { ToolCallUI, PendingAskUser } from '../../types'
+import type { ToolCallUI, PendingAskUser, AskUserResponseHandler } from '../../types'
 import { HiOutlineLockClosed, HiOutlineCheck, HiOutlineX } from 'react-icons/hi'
 import { addSecret } from './redact'
 import { ASK_USER_SKIP_ANSWER, SkipButton } from '../../ask-user-skip'
@@ -19,7 +19,7 @@ function isPasswordField(f: { name: string; type?: string }): boolean {
 interface LoginCardProps {
   toolCall: ToolCallUI
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: (answer: string | string[]) => void
+  onAskUserResponse?: AskUserResponseHandler
 }
 
 // Login is handled separately from ask_user: a pop-up form, and the transcript
