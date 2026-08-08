@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import type { ThinkingUI } from '../types'
 
-// Claude-Code-style working indicator: a glyph that grows from a dot to a starburst,
-// plus a rotating gerund. Shown on the running "thinking" line.
+// Animated working indicator: a glyph that grows from a dot to a starburst,
+// plus a rotating gerund shown on the active status line.
 const SPINNER_FRAMES = ['·', '✢', '✳', '∗', '✻', '✽', '✻', '∗', '✳', '✢']
 const GERUNDS = ['Thinking', 'Synthesizing', 'Reasoning', 'Pondering', 'Composing', 'Ruminating', 'Cooking', 'Crunching', 'Percolating', 'Noodling', 'Wrangling', 'Conjuring']
 

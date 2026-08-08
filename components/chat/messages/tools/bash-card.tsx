@@ -221,7 +221,7 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
         </div>
       </div>
 
-      {/* Terminal Block — Claude Code style: only rendered when expanded; collapsed = header row only */}
+      {/* Terminal block: only rendered when expanded; collapsed means header row only. */}
       {isExpanded && (
       <div className="ml-5">
         <div className="bg-[#1e1e1e] rounded-lg overflow-hidden relative group/terminal">
