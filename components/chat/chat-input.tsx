@@ -19,6 +19,7 @@ export function ChatInput({
   onSend,
   onStop,
   isLoading = false,
+  isStopping = false,
   placeholder = 'Message...',
   statusBar,
   className,
@@ -305,6 +306,15 @@ export function ChatInput({
             ? 'border-red-300 bg-red-50'
             : 'border-neutral-200 bg-neutral-50 focus-within:border-neutral-300 focus-within:bg-white focus-within:shadow-sm'
         )}>
+          {isStopping && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="border-b border-neutral-200 px-4 py-2 text-xs font-medium text-neutral-600"
+            >
+              Stopping…
+            </div>
+          )}
           {/* Input row */}
           <div className="flex items-end gap-3 px-4 py-3">
             {/* Hidden file input */}
@@ -366,16 +376,20 @@ export function ChatInput({
             {/* Send / Stop button — becomes a stop button while the agent is running */}
             {isLoading && onStop ? (
               <button
-                onClick={onStop}
-                disabled={isVoiceActive}
-                aria-label="Stop agent"
-                title="Stop"
+                onClick={isStopping ? undefined : onStop}
+                disabled={isVoiceActive || isStopping}
+                aria-label={isStopping ? 'Stopping agent' : 'Stop agent'}
+                title={isStopping ? 'Stopping…' : 'Stop'}
                 className={cn(
                   'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white transition-all duration-200 active:scale-95 shadow-sm',
                   'bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50'
                 )}
               >
-                <span className="h-3 w-3 rounded-[3px] bg-white" />
+                {isStopping ? (
+                  <LoadingSpinner />
+                ) : (
+                  <span className="h-3 w-3 rounded-[3px] bg-white" />
+                )}
               </button>
             ) : (
               <button

@@ -33,6 +33,7 @@ interface UseAgentSDKReturn {
   ui: ChatItem[]
   isConnected: boolean
   isLoading: boolean
+  isStopping: boolean
   pendingAskUser: PendingAskUser | null
   pendingApproval: PendingApproval | null
   pendingOnboard: PendingOnboard | null
@@ -101,6 +102,11 @@ function extractPendingStates(ui: ChatItem[]): { pendingAskUser: PendingAskUser 
       } else {
         pendingAskUser = null
       }
+    } else if (item.type === 'agent' && pendingAskUser) {
+      // A later terminal/assistant message means the standalone question is no
+      // longer awaiting input. This is especially important after Stop: older
+      // SDK transcripts do not mark the ask_user item itself as answered.
+      pendingAskUser = null
     } else if (item.type === 'approval_needed') {
       // Only set pendingApproval if the tool is still running
       const toolStatus = toolStatuses.get(item.tool.split(':')[0].toLowerCase())
@@ -156,6 +162,10 @@ function stopRunningItems(ui: ChatItem[]): ChatItem[] {
         return item.status === 'evaluating' ? { ...item, status: 'done' as const } : item
       case 'compact':
         return item.status === 'compacting' ? { ...item, status: 'done' as const } : item
+      case 'ask_user':
+        return (item as { answered?: boolean }).answered
+          ? item
+          : { ...item, answered: true, answer: 'Stopped by the user.' }
       default:
         return item
     }
@@ -163,7 +173,18 @@ function stopRunningItems(ui: ChatItem[]): ChatItem[] {
 }
 
 function hasActiveRestoredItem(ui: ChatItem[]): boolean {
-  return ui.some((item) => {
+  // A restored transcript can contain a stale `running` tool status followed by
+  // a terminal assistant message (for example after Stop). Only activity after
+  // the latest assistant message belongs to a still-running turn.
+  let latestAgentIndex = -1
+  for (let index = ui.length - 1; index >= 0; index -= 1) {
+    if (ui[index].type === 'agent') {
+      latestAgentIndex = index
+      break
+    }
+  }
+
+  return ui.slice(latestAgentIndex + 1).some((item) => {
     switch (item.type) {
       case 'thinking':
       case 'tool_call':
@@ -178,6 +199,16 @@ function hasActiveRestoredItem(ui: ChatItem[]): boolean {
         return false
     }
   })
+}
+
+function hasUnansweredUserTurn(ui: ChatItem[]): boolean {
+  let latestUserIndex = -1
+  let latestAgentIndex = -1
+  ui.forEach((item, index) => {
+    if (item.type === 'user') latestUserIndex = index
+    if (item.type === 'agent') latestAgentIndex = index
+  })
+  return latestUserIndex > latestAgentIndex
 }
 
 export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
@@ -260,11 +291,15 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
     return stopRequested ? stopRunningItems(items) : items
   }, [ui, stopRequested])
   const hasActiveUI = useMemo(() => hasActiveRestoredItem(cleanUI), [cleanUI])
+  const hasUnansweredTurn = useMemo(() => hasUnansweredUserTurn(cleanUI), [cleanUI])
   // A stop request freezes the visible work immediately, but the composer must
   // remain locked until the server reports the old turn idle.  Otherwise a new
   // prompt can be appended locally while the old LLM response is still in flight,
   // making that old response appear to answer the new prompt.
-  const isLoading = isProcessing || hasActiveUI || stopRequested
+  // The SDK can briefly restore `isProcessing=true` from a stale historical
+  // tool even though a later assistant message already ended that turn. Keep
+  // loading only when the transcript still needs an answer or has live UI work.
+  const isLoading = (isProcessing && (hasUnansweredTurn || hasActiveUI)) || hasActiveUI || stopRequested
 
   // The run ended for real (closing message arrived, or a fresh run started and
   // finished) — hand the UI back to the SDK's event stream. Adjust-during-render
@@ -415,6 +450,7 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
     ui: cleanUI,
     isConnected,
     isLoading,
+    isStopping: stopRequested,
     pendingAskUser,
     pendingApproval,
     pendingOnboard,

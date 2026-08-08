@@ -16,6 +16,7 @@ export function Chat({
   onSend,
   onStop,
   isLoading = false,
+  isStopping = false,
   placeholder = 'Send a message...',
   pendingAskUser,
   onAskUserResponse,
@@ -115,6 +116,7 @@ export function Chat({
         onSend={handleSend}
         onStop={onStop}
         isLoading={isLoading}
+        isStopping={isStopping}
         placeholder={inputPlaceholder}
         statusBar={statusBar}
         skills={skills}

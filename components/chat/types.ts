@@ -312,6 +312,8 @@ export interface ChatProps {
   /** Gracefully stop the running agent (shown as a stop button while isLoading) */
   onStop?: () => void
   isLoading?: boolean
+  /** Stop was clicked and the old server turn is unwinding. */
+  isStopping?: boolean
   placeholder?: string
   className?: string
   emptyStateTitle?: string
@@ -364,6 +366,7 @@ export interface ChatInputProps {
   /** Gracefully stop the running agent; when provided, the send button becomes a stop button while isLoading */
   onStop?: () => void
   isLoading?: boolean
+  isStopping?: boolean
   placeholder?: string
   className?: string
   /** Status bar below input (mode indicator + hints) */

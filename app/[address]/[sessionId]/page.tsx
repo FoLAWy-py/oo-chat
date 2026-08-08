@@ -97,6 +97,7 @@ export default function ChatSessionPage() {
   const {
     ui: hookUI,
     isLoading,
+    isStopping,
     pendingAskUser,
     pendingApproval,
     pendingOnboard,
@@ -215,6 +216,7 @@ export default function ChatSessionPage() {
           onSend={handleSend}
           onStop={interrupt}
           isLoading={isLoading}
+          isStopping={isStopping}
           suggestions={[]}
           pendingAskUser={pendingAskUser}
           onAskUserResponse={respondToAskUser}
