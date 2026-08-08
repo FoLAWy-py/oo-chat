@@ -6,6 +6,7 @@ import type { PendingAskUser, PendingApproval, PendingOnboard, PendingUlwTurnsRe
 import { dedupeUI } from './dedupe-ui'
 import { mergeServerEvidence } from './server-evidence'
 import { prepareAgentSessionStorage } from './migrate-agent-session'
+import { stopServerSession } from './session-lifecycle'
 
 /** Session lifecycle state */
 export type SessionActiveState = 'idle' | 'connected' | 'active' | 'disconnected' | 'reconnecting'
@@ -259,7 +260,11 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
     return stopRequested ? stopRunningItems(items) : items
   }, [ui, stopRequested])
   const hasActiveUI = useMemo(() => hasActiveRestoredItem(cleanUI), [cleanUI])
-  const isLoading = (isProcessing || hasActiveUI) && !stopRequested
+  // A stop request freezes the visible work immediately, but the composer must
+  // remain locked until the server reports the old turn idle.  Otherwise a new
+  // prompt can be appended locally while the old LLM response is still in flight,
+  // making that old response appear to answer the new prompt.
+  const isLoading = isProcessing || hasActiveUI || stopRequested
 
   // The run ended for real (closing message arrived, or a fresh run started and
   // finished) — hand the UI back to the SDK's event stream. Adjust-during-render
@@ -335,9 +340,10 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
 
   // Send message
   const send = useCallback((content: string, images?: string[], files?: import('./types').FileAttachment[]) => {
+    if (isLoading) return
     setStopRequested(false)
     input(content, { images, files })
-  }, [input])
+  }, [input, isLoading])
 
   // Stop: the UI stops immediately (optimistic — spinners freeze, the input
   // returns to send mode), while the agent-side poll_interrupt handler drains
@@ -349,9 +355,15 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
   const interrupt = useCallback(() => {
     setStopRequested(true)
     if (connectionState === 'connected') {
-      sendMessage({ type: 'INTERRUPT' })
+      try {
+        sendMessage({ type: 'INTERRUPT' })
+      } catch {
+        // The authenticated HTTP fallback below also covers a socket that closed
+        // between the connection-state render and this click.
+      }
     }
-  }, [sendMessage, connectionState])
+    void stopServerSession(sessionId)
+  }, [sendMessage, connectionState, sessionId])
 
   const respondToAskUser = useCallback((answer: string | string[]) => {
     sendMessage({ type: 'ASK_USER_RESPONSE', answer: Array.isArray(answer) ? answer.join(', ') : answer })

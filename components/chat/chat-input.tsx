@@ -51,6 +51,7 @@ export function ChatInput({
   })
 
   const handleSubmit = useCallback(() => {
+    if (isLoading) return
     const trimmed = value.trim()
     if (!trimmed && images.length === 0 && files.length === 0) return
 
@@ -63,7 +64,7 @@ export function ChatInput({
     setImages([])
     setFiles([])
     // Height resets automatically via useEffect when value changes
-  }, [value, images, files, onSend])
+  }, [value, images, files, onSend, isLoading])
 
   const handleFileSelect = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files

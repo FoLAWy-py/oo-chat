@@ -19,6 +19,7 @@ import { useAgentInfo } from '@/hooks/use-agent-info'
 import { AgentHeader } from '@/components/agent-header'
 import { SessionList } from '@/components/session-list'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { deleteServerSession, deleteServerSessions } from '@/components/chat/session-lifecycle'
 import { version as connectonionVersion } from 'connectonion/package.json'
 
 interface SidebarProps {
@@ -43,6 +44,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Track which agents are expanded (all expanded by default)
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
   const [pendingRemove, setPendingRemove] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Auto-expand new agents
   const isExpanded = (address: string) => !expandedAgents.has(address) // inverted: Set tracks collapsed agents
@@ -90,12 +92,21 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     })
   }
 
-  const handleDeleteSession = (sessionId: string) => {
+  const handleDeleteSession = async (sessionId: string) => {
     const session = conversations.find(c => c.sessionId === sessionId)
-    deleteConversation(sessionId)
-    // If we deleted the active session, go to agent landing
-    if (activeSessionId === sessionId && session) {
-      router.push(`/${session.agentAddress}`)
+    if (!session || deleting) return
+    setDeleting(true)
+    try {
+      await deleteServerSession(sessionId)
+      deleteConversation(sessionId)
+      // If we deleted the active session, go to agent landing
+      if (activeSessionId === sessionId) {
+        router.push(`/${session.agentAddress}`)
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Session cleanup failed')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -376,12 +387,20 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             const count = (sessionsByAgent[pendingRemove] || []).length
             return `${infoMap[pendingRemove]?.name || 'This agent'}${count > 0 ? ` and its ${count} chat${count > 1 ? 's' : ''}` : ''} will be removed. This cannot be undone.`
           })() : undefined}
-          onConfirm={() => {
-            if (pendingRemove) {
+          onConfirm={async () => {
+            if (!pendingRemove || deleting) return
+            setDeleting(true)
+            try {
+              const sessionIds = (sessionsByAgent[pendingRemove] || []).map(s => s.sessionId)
+              await deleteServerSessions(sessionIds)
               removeAgent(pendingRemove)
               if (activeAgent === pendingRemove) router.push('/')
+              setPendingRemove(null)
+            } catch (error) {
+              window.alert(error instanceof Error ? error.message : 'Session cleanup failed')
+            } finally {
+              setDeleting(false)
             }
-            setPendingRemove(null)
           }}
           onCancel={() => setPendingRemove(null)}
         />
