@@ -31,6 +31,10 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const skillRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const isComposingRef = useRef(false)
+  const compositionEnterHandledRef = useRef(false)
+  const suppressNextEnterRef = useRef(false)
+  const compositionGuardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const apiKey = useChatStore(state => state.openonionApiKey)
 
   // Voice input - click to toggle recording
@@ -136,7 +140,42 @@ export function ChatInput({
     textareaRef.current?.focus()
   }
 
+  const handleCompositionStart = () => {
+    if (compositionGuardTimerRef.current !== null) {
+      clearTimeout(compositionGuardTimerRef.current)
+      compositionGuardTimerRef.current = null
+    }
+    isComposingRef.current = true
+    compositionEnterHandledRef.current = false
+    suppressNextEnterRef.current = false
+  }
+
+  const handleCompositionEnd = () => {
+    isComposingRef.current = false
+    suppressNextEnterRef.current = !compositionEnterHandledRef.current
+    compositionGuardTimerRef.current = setTimeout(() => {
+      suppressNextEnterRef.current = false
+      compositionGuardTimerRef.current = null
+    }, 100)
+  }
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (
+      isComposingRef.current
+      || e.nativeEvent.isComposing
+      || e.nativeEvent.keyCode === 229
+    )) {
+      compositionEnterHandledRef.current = true
+      return
+    }
+
+    // Some IMEs emit compositionend before the Enter keydown that confirms it.
+    if (e.key === 'Enter' && suppressNextEnterRef.current) {
+      e.preventDefault()
+      suppressNextEnterRef.current = false
+      return
+    }
+
     if (filteredSkills.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
@@ -341,6 +380,8 @@ export function ChatInput({
               ref={textareaRef}
               value={value}
               onChange={handleTextChange}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
               onKeyDown={handleKeyDown}
               onInput={resizeTextarea}
               placeholder={isVoiceActive ? '' : placeholder}
