@@ -12,16 +12,17 @@ export function Eval({ eval: evalData }: EvalProps) {
 
   // Timer for evaluating state
   useEffect(() => {
-    if (!isEvaluating) {
-      setSeconds(0)
-      return
-    }
+    if (!isEvaluating) return
 
+    const reset = window.setTimeout(() => setSeconds(0), 0)
     const interval = setInterval(() => {
       setSeconds(s => s + 1)
     }, 1000)
 
-    return () => clearInterval(interval)
+    return () => {
+      window.clearTimeout(reset)
+      clearInterval(interval)
+    }
   }, [isEvaluating])
 
   // Evaluating state - show spinner

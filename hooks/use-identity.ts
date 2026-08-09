@@ -106,16 +106,19 @@ export function useIdentity() {
 
   // Load identity on mount
   useEffect(() => {
-    const keys = loadBrowser()
-    if (keys) {
-      setIdentity(keys)
-    } else {
-      const { keys: newKeys, mnemonic } = generateWithMnemonic()
-      saveBrowser(newKeys, mnemonic)
-      setIdentity(newKeys)
-      setNewMnemonic(mnemonic)
-      setShowRecoveryPhrase(true)
-    }
+    const timeout = window.setTimeout(() => {
+      const keys = loadBrowser()
+      if (keys) {
+        setIdentity(keys)
+      } else {
+        const { keys: newKeys, mnemonic } = generateWithMnemonic()
+        saveBrowser(newKeys, mnemonic)
+        setIdentity(newKeys)
+        setNewMnemonic(mnemonic)
+        setShowRecoveryPhrase(true)
+      }
+    }, 0)
+    return () => window.clearTimeout(timeout)
   }, [])
 
   // Authenticate when identity changes

@@ -11,16 +11,17 @@ export function Compact({ compact }: CompactProps) {
 
   // Timer for compacting state
   useEffect(() => {
-    if (!isCompacting) {
-      setSeconds(0)
-      return
-    }
+    if (!isCompacting) return
 
+    const reset = window.setTimeout(() => setSeconds(0), 0)
     const interval = setInterval(() => {
       setSeconds(s => s + 1)
     }, 1000)
 
-    return () => clearInterval(interval)
+    return () => {
+      window.clearTimeout(reset)
+      clearInterval(interval)
+    }
   }, [isCompacting])
 
   // Compacting state - show spinner with context percentage

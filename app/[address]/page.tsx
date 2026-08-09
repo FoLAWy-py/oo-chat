@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { HiChevronDown, HiChevronUp } from 'react-icons/hi2'
 import { ChatInput, ModeStatusBar } from '@/components/chat'
@@ -111,36 +111,34 @@ export default function AgentLandingPage() {
 
   const label = agentInfo?.name || shortAddress(address)
   const isOnline = agentInfo?.online
-  const skills = agentInfo?.skills || []
-  const tools = agentInfo?.tools || []
+  const skills = agentInfo?.skills ?? []
+  const tools = agentInfo?.tools ?? []
 
-  const metaLine = useMemo(() => {
-    const parts: string[] = []
-    if (agentInfo?.model) parts.push(agentInfo.model)
-    if (agentInfo?.trust) parts.push(agentInfo.trust)
-    if (agentInfo?.version) parts.push(`v${agentInfo.version}`)
-    return parts.join(' · ')
-  }, [agentInfo?.model, agentInfo?.trust, agentInfo?.version])
+  const metaParts: string[] = []
+  if (agentInfo?.model) metaParts.push(agentInfo.model)
+  if (agentInfo?.trust) metaParts.push(agentInfo.trust)
+  if (agentInfo?.version) metaParts.push(`v${agentInfo.version}`)
+  const metaLine = metaParts.join(' · ')
 
-  const toolsLine = useMemo(() => {
-    if (tools.length === 0) return null
+  let toolsLine: string | null = null
+  if (tools.length > 0) {
     const max = 6
     const names = tools.slice(0, max).map(t =>
       t.replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase())
     )
     const rest = tools.length - max
-    return names.join(' · ') + (rest > 0 ? ` +${rest} more` : '')
-  }, [tools])
+    toolsLine = names.join(' · ') + (rest > 0 ? ` +${rest} more` : '')
+  }
 
-  const acceptsLine = useMemo(() => {
-    const inputs = agentInfo?.accepted_inputs
-    if (!inputs) return null
+  let acceptsLine: string | null = null
+  const inputs = agentInfo?.accepted_inputs
+  if (inputs) {
     const parts: string[] = []
     if (inputs.text) parts.push('text')
     if (inputs.images) parts.push('images')
     if (inputs.files) parts.push(`files (${inputs.files.max_file_size_mb}MB)`)
-    return parts.length > 0 ? parts.join(' · ') : null
-  }, [agentInfo?.accepted_inputs])
+    acceptsLine = parts.length > 0 ? parts.join(' · ') : null
+  }
 
   return (
     <>

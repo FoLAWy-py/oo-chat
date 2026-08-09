@@ -9,19 +9,41 @@ import { ApprovalButtons } from './approval-buttons'
 import { Modal } from '@/components/ui/modal'
 import { getFileName, getFileIcon } from './file-utils'
 import { CompactHeader, FileCodePeek, FileFullView } from './file-components'
+import type { PendingApproval, ToolCallUI } from '../../types'
 
-export function FileCard({ toolCall, pendingApproval, onApprovalResponse }: any) {
+type ApprovalState = 'approved' | 'approved_session' | 'skipped' | 'stopped' | null
+type RejectionMode = 'reject_soft' | 'reject_hard' | 'reject_explain'
+
+interface FileCardProps {
+  toolCall: ToolCallUI
+  pendingApproval?: PendingApproval | null
+  onApprovalResponse?: (
+    approved: boolean,
+    scope: 'once' | 'session',
+    mode?: RejectionMode,
+    feedback?: string,
+  ) => void
+}
+
+function firstString(...values: unknown[]): string {
+  return values.find((value): value is string => typeof value === 'string') ?? ''
+}
+
+export function FileCard({ toolCall, pendingApproval, onApprovalResponse }: FileCardProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [approvalSent, setApprovalSent] = useState<string | null>(null)
+  const [approvalSent, setApprovalSent] = useState<ApprovalState>(null)
   const [copied, setCopied] = useState(false)
 
   const { name, args, status, result, timing_ms } = toolCall
-  const filePath = (args?.file_path || args?.path || args?.filename || '') as string
-  const content = (name.toLowerCase() === 'write' ? args?.content : result) || ''
+  const filePath = firstString(args?.file_path, args?.path, args?.filename)
+  const content = name.toLowerCase() === 'write' ? firstString(args?.content) : result || ''
 
-  const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: any) => {
+  const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: RejectionMode) => {
     if (approvalSent) return
-    setApprovalSent(approved ? 'approved' : mode === 'reject_soft' ? 'skipped' : 'stopped')
+    setApprovalSent(
+      approved ? (scope === 'session' ? 'approved_session' : 'approved')
+        : mode === 'reject_soft' ? 'skipped' : 'stopped'
+    )
     onApprovalResponse?.(approved, scope, mode)
   }
 
@@ -64,7 +86,7 @@ export function FileCard({ toolCall, pendingApproval, onApprovalResponse }: any)
       {!!pendingApproval && status === 'running' && (
         <div className="mt-4 ml-5">
           <ApprovalButtons
-            approvalSent={approvalSent as any} onApproval={handleApproval}
+            approvalSent={approvalSent} onApproval={handleApproval}
             toolName={name} description={pendingApproval.description}
             batchRemaining={pendingApproval.batch_remaining}
           />

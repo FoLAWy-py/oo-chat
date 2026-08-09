@@ -31,7 +31,10 @@ export function LoginCard({ toolCall, pendingAskUser, onAskUserResponse }: Login
   const [skipped, setSkipped] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setMounted(true))
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
 
   const question = (args?.question as string) || ''
   const fields = pendingAskUser?.fields

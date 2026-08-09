@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { HiOutlineBookOpen, HiOutlineCheck, HiOutlineClipboard, HiOutlineChevronDown, HiOutlineChevronRight } from 'react-icons/hi'
 import { Modal } from '@/components/ui/modal'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -42,19 +42,18 @@ export function GuideCard({ toolCall }: GuideCardProps) {
   const statusIcon = status === 'done' ? '✓' : status === 'error' ? '✗' : '●'
 
   // Markdown code block renderer
-  const components = {
-    code({ inline, className, children, ...props }: any) {
+  const components: Components = {
+    code({ className, children }) {
       const match = /language-(\w+)/.exec(className || '')
       const codeString = String(children).replace(/\n$/, '')
 
-      if (!inline && match) {
+      if (match) {
         return (
           <SyntaxHighlighter
             style={oneDark}
             language={match[1]}
             PreTag="div"
             className="rounded-lg text-sm !my-3"
-            {...props}
           >
             {codeString}
           </SyntaxHighlighter>
@@ -62,7 +61,7 @@ export function GuideCard({ toolCall }: GuideCardProps) {
       }
 
       return (
-        <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-800 text-sm" {...props}>
+        <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-800 text-sm">
           {children}
         </code>
       )

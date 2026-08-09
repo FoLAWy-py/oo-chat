@@ -9,26 +9,48 @@ import {
 import { ApprovalButtons } from './approval-buttons'
 import { Modal } from '@/components/ui/modal'
 import { getFileName } from './file-utils'
-import { CompactHeader, FileCodePeek, FileFullView, FileDiffSideBySideView } from './file-components'
+import { CompactHeader, FileCodePeek, FileDiffSideBySideView } from './file-components'
+import type { PendingApproval, ToolCallUI } from '../../types'
 
-export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: any) {
+type ApprovalState = 'approved' | 'approved_session' | 'skipped' | 'stopped' | null
+type RejectionMode = 'reject_soft' | 'reject_hard' | 'reject_explain'
+
+interface FileDiffCardProps {
+  toolCall: ToolCallUI
+  pendingApproval?: PendingApproval | null
+  onApprovalResponse?: (
+    approved: boolean,
+    scope: 'once' | 'session',
+    mode?: RejectionMode,
+    feedback?: string,
+  ) => void
+}
+
+function firstString(...values: unknown[]): string {
+  return values.find((value): value is string => typeof value === 'string') ?? ''
+}
+
+export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: FileDiffCardProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [approvalSent, setApprovalSent] = useState<string | null>(null)
+  const [approvalSent, setApprovalSent] = useState<ApprovalState>(null)
   const [copied, setCopied] = useState(false)
 
   const { name, args, status, timing_ms } = toolCall
-  const filePath = (args?.file_path || args?.path || args?.filename || '') as string
+  const filePath = firstString(args?.file_path, args?.path, args?.filename)
 
-  const oldStr = (args?.old_string as string) || ''
-  const newStr = (args?.new_string as string) || ''
+  const oldStr = firstString(args?.old_string)
+  const newStr = firstString(args?.new_string)
   const diffContent = oldStr || newStr ? [
     oldStr ? `- ${oldStr.split('\n').join('\n- ')}` : '',
     newStr ? `+ ${newStr.split('\n').join('\n+ ')}` : ''
   ].filter(Boolean).join('\n') : ''
 
-  const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: any) => {
+  const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: RejectionMode) => {
     if (approvalSent) return
-    setApprovalSent(approved ? 'approved' : mode === 'reject_soft' ? 'skipped' : 'stopped')
+    setApprovalSent(
+      approved ? (scope === 'session' ? 'approved_session' : 'approved')
+        : mode === 'reject_soft' ? 'skipped' : 'stopped'
+    )
     onApprovalResponse?.(approved, scope, mode)
   }
 
@@ -72,7 +94,7 @@ export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: 
       {!!pendingApproval && status === 'running' && (
         <div className="mt-4 ml-5">
           <ApprovalButtons
-            approvalSent={approvalSent as any} onApproval={handleApproval}
+            approvalSent={approvalSent} onApproval={handleApproval}
             toolName={name} description={pendingApproval.description}
             batchRemaining={pendingApproval.batch_remaining}
           />
