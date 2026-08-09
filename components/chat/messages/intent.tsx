@@ -19,11 +19,12 @@ export function Intent({ intent }: { intent: IntentUI }) {
   const isAnalyzing = intent.status === 'analyzing'
 
   useEffect(() => {
-    if (!isAnalyzing) {
+    if (!isAnalyzing) return
+
+    const reset = window.setTimeout(() => {
       setSeconds(0)
       setSimulatedTokens(0)
-      return
-    }
+    }, 0)
 
     const timeInterval = setInterval(() => setSeconds(s => s + 1), 1000)
     const tokenInterval = setInterval(() => {
@@ -31,6 +32,7 @@ export function Intent({ intent }: { intent: IntentUI }) {
     }, 100)
 
     return () => {
+      window.clearTimeout(reset)
       clearInterval(timeInterval)
       clearInterval(tokenInterval)
     }

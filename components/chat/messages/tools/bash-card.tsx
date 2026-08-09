@@ -81,9 +81,10 @@ function highlightBash(command: string): React.ReactNode[] {
       } else {
         const wordMatch = remaining.match(/^[\w./~@:%-]+/)
         if (wordMatch) {
+          const previousToken = tokens.at(-1)
           const isCommand = tokens.length === 0 ||
-            (tokens.length > 0 && typeof tokens[tokens.length-1] === 'object' &&
-             (tokens[tokens.length-1] as any)?.props?.className === colors.operator)
+            (React.isValidElement<{ className?: string }>(previousToken) &&
+             previousToken.props.className === colors.operator)
           tokens.push(<span key={key++} className={isCommand ? colors.command : colors.argument}>{wordMatch[0]}</span>)
           remaining = remaining.slice(wordMatch[0].length)
         } else {
@@ -94,13 +95,6 @@ function highlightBash(command: string): React.ReactNode[] {
     }
   }
   return tokens
-}
-
-function getPreviewLines(result: string, maxLines = 3): { lines: string[]; remaining: number } {
-  const allLines = result.split('\n').filter(l => l.trim())
-  const lines = allLines.slice(0, maxLines)
-  const remaining = allLines.length - maxLines
-  return { lines, remaining: Math.max(0, remaining) }
 }
 
 // Check if this is a "tool blocked" error (from prefer_write_tool plugin)
@@ -125,12 +119,13 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
 
   useEffect(() => {
     const isActuallyRunning = status === 'running' && (!pendingApproval || approvalSent)
-    if (!isActuallyRunning) {
-      setRunningSeconds(0)
-      return
-    }
+    if (!isActuallyRunning) return
+    const reset = window.setTimeout(() => setRunningSeconds(0), 0)
     const interval = setInterval(() => setRunningSeconds(s => s + 1), 1000)
-    return () => clearInterval(interval)
+    return () => {
+      window.clearTimeout(reset)
+      clearInterval(interval)
+    }
   }, [status, pendingApproval, approvalSent])
 
   // Hide bash card when tool was blocked - tool_blocked card shows instead
@@ -139,9 +134,6 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
   }
 
   const hasOutput = result && result.length > 0
-  const { lines: previewLines, remaining } = hasOutput
-    ? getPreviewLines(result)
-    : { lines: [], remaining: 0 }
 
   const needsApproval = !!pendingApproval && !!onApprovalResponse
 
@@ -229,41 +221,22 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
             className="cursor-pointer"
             onClick={() => setIsExpanded(!isExpanded)}
           >
-            {isExpanded ? (
-              <pre className="px-3 py-2.5 text-[13px] text-[#F8F8F2] font-mono whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto leading-relaxed scrollbar-thin scrollbar-thumb-neutral-700">
-                <div className="flex items-start gap-2">
-                  <span className="text-[#75715E] select-none">$</span>
-                  <div className="flex-1">{highlightBash(command || '')}</div>
+            <pre className="px-3 py-2.5 text-[13px] text-[#F8F8F2] font-mono whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto leading-relaxed scrollbar-thin scrollbar-thumb-neutral-700">
+              <div className="flex items-start gap-2">
+                <span className="text-[#75715E] select-none">$</span>
+                <div className="flex-1">{highlightBash(command || '')}</div>
+              </div>
+              {hasOutput && (
+                <div className="text-neutral-300 border-t border-[#333] pt-2.5 mt-2.5 opacity-90 text-[12px]">
+                  {result}
                 </div>
-                {hasOutput && (
-                  <div className="text-neutral-300 border-t border-[#333] pt-2.5 mt-2.5 opacity-90 text-[12px]">
-                    {result}
-                  </div>
-                )}
-                {!hasOutput && status === 'done' && (
-                  <div className="text-[#75715E] mt-2.5 italic text-[11px] font-mono opacity-50">// No output</div>
-                )}
-              </pre>
-            ) : (
-              <pre className="px-3 py-2.5 text-[13px] font-mono leading-relaxed">
-                <div className="flex items-start gap-2">
-                  <span className="text-[#75715E] select-none">$</span>
-                  <div className="flex-1 truncate">{highlightBash(command || '')}</div>
+              )}
+              {!hasOutput && status === 'done' && (
+                <div className="text-[#75715E] mt-2.5 italic text-[11px] font-mono opacity-50">
+                  {'// No output'}
                 </div>
-                {hasOutput && (
-                  <div className="mt-2.5 text-neutral-400 border-t border-[#333] pt-2.5 overflow-hidden text-[12px]">
-                    {previewLines.slice(0, 2).map((line, i) => (
-                      <div key={i} className="truncate opacity-70 mb-0.5">{line}</div>
-                    ))}
-                    {remaining > 0 && (
-                      <div className="text-[#75715E] mt-1.5 text-[10px] opacity-60">
-                        +{remaining + (previewLines.length > 2 ? previewLines.length - 2 : 0)} more lines
-                      </div>
-                    )}
-                  </div>
-                )}
-              </pre>
-            )}
+              )}
+            </pre>
           </div>
           {/* Copy button - appears on hover */}
           <button

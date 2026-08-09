@@ -3,15 +3,9 @@
 import { useState } from 'react'
 import { HiOutlineClipboardList, HiOutlineCheck, HiOutlineClipboard, HiOutlineHeart, HiHeart, HiOutlineExclamationCircle, HiOutlineArrowsExpand } from 'react-icons/hi'
 import { Modal } from '@/components/ui/modal'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-
-interface PlanComment {
-  id: string
-  quotedText: string
-  feedback: string
-}
 
 interface SectionReaction {
   sectionId: string
@@ -78,7 +72,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
   // Section reactions state
   const [reactions, setReactions] = useState<Record<string, SectionReaction>>({})
 
-  const { name, args, status, result, timing_ms } = toolCall
+  const { args, status, result, timing_ms } = toolCall
   const content = pendingPlanReview?.plan_content || args?.content || result || ''
 
   // Parse plan into sections
@@ -137,19 +131,18 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
   const sections = parseSections(content)
 
   // Markdown code block renderer with syntax highlighting
-  const components = {
-    code({ inline, className, children, ...props }: any) {
+  const components: Components = {
+    code({ className, children }) {
       const match = /language-(\w+)/.exec(className || '')
       const codeString = String(children).replace(/\n$/, '')
 
-      if (!inline && match) {
+      if (match) {
         return (
           <SyntaxHighlighter
             style={oneDark}
             language={match[1]}
             PreTag="div"
             className="rounded-lg text-sm !my-3"
-            {...props}
           >
             {codeString}
           </SyntaxHighlighter>
@@ -157,7 +150,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
       }
 
       return (
-        <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-800 text-sm" {...props}>
+        <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-800 text-sm">
           {children}
         </code>
       )
@@ -446,14 +439,14 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
                         <div className="flex items-start gap-3">
                           <HiOutlineExclamationCircle className="w-6 h-6 text-neutral-200 shrink-0 mt-1" />
                           <div className="flex-1">
-                            <p className="text-base text-neutral-100 font-semibold mb-1">Don't do this way</p>
+                            <p className="text-base text-neutral-100 font-semibold mb-1">Don’t do this way</p>
                             <p className="text-sm text-neutral-400">Share what needs to change:</p>
                           </div>
                         </div>
                         <textarea
                           value={reaction.comment || ''}
                           onChange={(e) => handleCommentChange(section.id, e.target.value)}
-                          placeholder="Explain what's wrong and how to improve it..."
+                          placeholder="Explain what’s wrong and how to improve it..."
                           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 text-base rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-neutral-500 placeholder:text-neutral-500 resize-none leading-relaxed"
                           rows={4}
                           autoFocus
@@ -483,7 +476,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
                     {Object.values(reactions).filter(r => r.type === 'dislike').length !== 1 ? 's' : ''} need changes
                   </p>
                   <p className="text-sm text-neutral-400 leading-relaxed">
-                    Your feedback will be sent when you click "Request Changes" below. I'll revise the plan based on your suggestions.
+                    Your feedback will be sent when you click “Request Changes” below. I’ll revise the plan based on your suggestions.
                   </p>
                 </div>
               </div>
@@ -512,7 +505,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
                     All sections look good
                   </p>
                   <p className="text-sm text-neutral-400 leading-relaxed">
-                    No feedback needed. All sections are approved by default. Click "Approve" below to proceed.
+                    No feedback needed. All sections are approved by default. Click “Approve” below to proceed.
                   </p>
                 </div>
               </div>

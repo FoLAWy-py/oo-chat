@@ -6,6 +6,7 @@ import {
   HiOutlineX,
   HiOutlineArrowsExpand
 } from 'react-icons/hi'
+import type { IconType } from 'react-icons'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '../../utils'
@@ -222,7 +223,7 @@ export function FileDiffSideBySideView({ oldContent, newContent, filePath }: { o
 interface CompactHeaderProps {
   toolName: string
   fileName: string
-  Icon: any
+  Icon: IconType
   status: string
   timingMs?: number
   approvalSent?: string | null

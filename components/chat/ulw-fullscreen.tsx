@@ -165,11 +165,6 @@ function PromptEditor({ label, value, onSave, placeholder, rows }: PromptEditorP
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
-  // Sync draft when value changes externally
-  useEffect(() => {
-    if (!editing) setDraft(value)
-  }, [value, editing])
-
   const save = useCallback(() => {
     setEditing(false)
     if (draft.trim() !== value) onSave(draft.trim())

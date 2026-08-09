@@ -34,15 +34,18 @@ export function Thinking({ thinking, isLast = true }: { thinking: ThinkingUI; is
   useEffect(() => {
     if (!isRunning) return
 
-    setSeconds(0)
-    setFrame(0)
-    setWord(0)
+    const reset = window.setTimeout(() => {
+      setSeconds(0)
+      setFrame(0)
+      setWord(0)
+    }, 0)
 
     const timeInterval = setInterval(() => setSeconds(s => s + 1), 1000)
     const spin = setInterval(() => setFrame(f => (f + 1) % SPINNER_FRAMES.length), 120)
     const cycle = setInterval(() => setWord(w => (w + 1) % GERUNDS.length), 2800)
 
     return () => {
+      window.clearTimeout(reset)
       clearInterval(timeInterval)
       clearInterval(spin)
       clearInterval(cycle)

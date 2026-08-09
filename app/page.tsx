@@ -25,9 +25,18 @@ export default function DeploymentHome() {
   }, [addAgent, router])
 
   useEffect(() => {
-    bindAgent().catch(error => {
-      setBindingError(error instanceof Error ? error.message : 'Agent binding failed')
-    })
+    let active = true
+    const timeout = window.setTimeout(() => {
+      bindAgent().catch(error => {
+        if (active) {
+          setBindingError(error instanceof Error ? error.message : 'Agent binding failed')
+        }
+      })
+    }, 0)
+    return () => {
+      active = false
+      window.clearTimeout(timeout)
+    }
   }, [attempt, bindAgent])
 
   return (
