@@ -1,15 +1,5 @@
 'use client'
 
-/**
- * @purpose ULW checkpoint prompt allowing user to continue, extend turns, or switch modes
- * @llm-note
- *   Dependencies: imports from [react, react-icons, ./utils.ts, ./types.ts] | imported by [chat.tsx]
- *   Data flow: receives {checkpoint: PendingUlwTurnsReached, onResponse: (action, options) => void} → user clicks continue/switch → onResponse sends to agent
- *   State/Effects: no state, immediate actions
- *   Integration: exposes ChatUlwCheckpoint component | used when pendingUlwTurnsReached is not null
- *   Errors: no error handling
- */
-
 import { HiOutlineRocketLaunch } from 'react-icons/hi2'
 import { HiOutlinePlay, HiOutlineShieldCheck, HiOutlineLightningBolt } from 'react-icons/hi'
 import { cn } from './utils'
