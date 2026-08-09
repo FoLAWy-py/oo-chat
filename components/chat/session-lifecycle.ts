@@ -1,8 +1,16 @@
-export async function stopServerSession(sessionId: string): Promise<boolean> {
+interface StopServerSessionOptions {
+  retryStartup?: boolean
+}
+
+export async function stopServerSession(
+  sessionId: string,
+  options: StopServerSessionOptions = {},
+): Promise<boolean> {
   // A brand-new chat can render its Stop button just before the websocket INPUT
   // has registered the server execution. Retry this narrow startup window so the
   // stop request cannot be lost between navigation and registry creation.
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  const attempts = options.retryStartup === false ? 1 : 40
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
         method: 'POST',
@@ -15,7 +23,9 @@ export async function stopServerSession(sessionId: string): Promise<boolean> {
     } catch {
       // The websocket interrupt may still succeed; retry the server fallback.
     }
-    await new Promise(resolve => window.setTimeout(resolve, 100))
+    if (attempt + 1 < attempts) {
+      await new Promise(resolve => window.setTimeout(resolve, 100))
+    }
   }
   return false
 }

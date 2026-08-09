@@ -237,11 +237,13 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
     setMode: sdkSetMode,
     reconnect: sdkReconnect,
   } = useAgentForHuman(agentAddress, sessionId)
-  // Optimistic stop: set the instant the user clicks Stop, cleared when the run
-  // actually ends (status → idle) or the user sends a new message. While set,
-  // the UI renders as stopped even though the agent is still finishing its
-  // current step server-side.
-  const [stopRequested, setStopRequested] = useState(false)
+  // Keep stopped work visually frozen after an idle/no-task response, while
+  // reserving `requested` for the brief period in which Stop is still pending.
+  // This lets an already-idle transcript recover without revealing the stale
+  // optimistic spinner that caused the Stop button in the first place.
+  const [stopState, setStopState] = useState<'none' | 'requested' | 'settled'>('none')
+  const stopRequested = stopState === 'requested'
+  const stopAttemptRef = useRef(0)
 
   // A URL session may outlive the SDK's sanitized local UI cache. Give normal
   // hydration a moment, then ask the server for the canonical transcript when
@@ -288,8 +290,8 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
     if (lastOnboardIndex !== -1) {
       items = items.filter((item, i) => item.type !== 'onboard_required' || i === lastOnboardIndex)
     }
-    return stopRequested ? stopRunningItems(items) : items
-  }, [ui, stopRequested])
+    return stopState === 'none' ? items : stopRunningItems(items)
+  }, [ui, stopState])
   const hasActiveUI = useMemo(() => hasActiveRestoredItem(cleanUI), [cleanUI])
   const hasUnansweredTurn = useMemo(() => hasUnansweredUserTurn(cleanUI), [cleanUI])
   // A stop request freezes the visible work immediately, but the composer must
@@ -307,7 +309,7 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
   const [prevRunStatus, setPrevRunStatus] = useState(status)
   if (status !== prevRunStatus) {
     setPrevRunStatus(status)
-    if (status === 'idle' && stopRequested) setStopRequested(false)
+    if (status === 'idle' && stopRequested) setStopState('settled')
   }
 
   // Poll server session status only after user was just connected (processing → idle)
@@ -376,7 +378,8 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
   // Send message
   const send = useCallback((content: string, images?: string[], files?: import('./types').FileAttachment[]) => {
     if (isLoading) return
-    setStopRequested(false)
+    stopAttemptRef.current += 1
+    setStopState('none')
     input(content, { images, files })
   }, [input, isLoading])
 
@@ -388,7 +391,9 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
   // on a null socket), but the optimistic UI stop applies regardless, so a
   // restored session stuck showing "running" can also be dismissed.
   const interrupt = useCallback(() => {
-    setStopRequested(true)
+    const attempt = stopAttemptRef.current + 1
+    stopAttemptRef.current = attempt
+    setStopState('requested')
     if (connectionState === 'connected') {
       try {
         sendMessage({ type: 'INTERRUPT' })
@@ -397,8 +402,12 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
         // between the connection-state render and this click.
       }
     }
-    void stopServerSession(sessionId)
-  }, [sendMessage, connectionState, sessionId])
+    void stopServerSession(sessionId, { retryStartup: status !== 'idle' }).then(delivered => {
+      if (stopAttemptRef.current === attempt && !delivered) {
+        setStopState('settled')
+      }
+    })
+  }, [sendMessage, connectionState, sessionId, status])
 
   const respondToAskUser = useCallback((answer: string | string[], images?: string[], files?: FileAttachment[]) => {
     sendMessage({
