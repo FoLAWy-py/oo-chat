@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { ToolStatus } from './tool-status'
 import { HiOutlineBookOpen, HiOutlineCheck, HiOutlineClipboard, HiOutlineChevronDown, HiOutlineChevronRight } from 'react-icons/hi'
 import { Modal } from '@/components/ui/modal'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -38,22 +39,27 @@ export function GuideCard({ toolCall }: GuideCardProps) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const statusColor = status === 'done' ? 'text-neutral-500' : status === 'error' ? 'text-red-500' : 'text-brand-500'
-  const statusIcon = status === 'done' ? '✓' : status === 'error' ? '✗' : '●'
 
   // Markdown code block renderer
-  const components: Components = {
-    code({ className, children }) {
+  const components = {
+    code({ inline, className, children, ...props }:
+      React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) {
       const match = /language-(\w+)/.exec(className || '')
       const codeString = String(children).replace(/\n$/, '')
 
-      if (match) {
+      // Keep the code element's own `style` out of the highlighter: it spreads
+      // after style={oneDark} and would replace the whole syntax theme with one
+      // inline declaration.
+      const { style: _codeStyle, ...highlighterProps } = props
+
+      if (!inline && match) {
         return (
           <SyntaxHighlighter
             style={oneDark}
             language={match[1]}
             PreTag="div"
             className="rounded-lg text-sm !my-3"
+            {...highlighterProps}
           >
             {codeString}
           </SyntaxHighlighter>
@@ -61,7 +67,7 @@ export function GuideCard({ toolCall }: GuideCardProps) {
       }
 
       return (
-        <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-800 text-sm">
+        <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-800 text-sm" {...props}>
           {children}
         </code>
       )
@@ -81,7 +87,7 @@ export function GuideCard({ toolCall }: GuideCardProps) {
           ) : (
             <HiOutlineChevronRight className="w-4 h-4 text-neutral-400" />
           )}
-          <span className={statusColor}>{statusIcon}</span>
+          <ToolStatus status={status} />
           <HiOutlineBookOpen className="w-4 h-4 text-neutral-500" />
           <span className="font-medium">load_guide</span>
           <span className="text-neutral-500">({guidePath})</span>
@@ -95,7 +101,7 @@ export function GuideCard({ toolCall }: GuideCardProps) {
       {!isExpanded && content && (
         <button
           onClick={() => setIsExpanded(true)}
-          className="ml-5 mt-1.5 text-left w-full"
+          className="ml-[60px] mt-1.5 text-left w-full"
         >
           <div className="text-xs text-neutral-600 truncate max-w-md">
             {firstHeading && <span className="font-medium">{firstHeading}</span>}
@@ -107,7 +113,7 @@ export function GuideCard({ toolCall }: GuideCardProps) {
 
       {/* Expanded Content */}
       {isExpanded && content && (
-        <div className="ml-5 mt-2 relative group/card">
+        <div className="ml-[60px] mt-2 relative group/card">
           <div
             onClick={() => setIsFullscreen(true)}
             className="cursor-pointer rounded-lg border border-neutral-200 bg-neutral-50 overflow-hidden hover:border-neutral-300 transition-colors"

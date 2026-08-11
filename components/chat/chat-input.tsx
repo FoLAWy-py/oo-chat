@@ -7,7 +7,7 @@
 import { useState, useRef, useCallback, useEffect, KeyboardEvent, ChangeEvent } from 'react'
 import { HiOutlineArrowUp, HiOutlineMicrophone, HiOutlineStop, HiX } from 'react-icons/hi'
 import { HiOutlinePlus, HiOutlineDocument } from 'react-icons/hi2'
-import { useVoiceInput } from 'connectonion/react'
+import { useVoiceInput } from '@connectonion/react'
 import { useChatStore } from '@/store/chat-store'
 import { cn } from './utils'
 import type { ChatInputProps, FileAttachment } from './types'
@@ -19,11 +19,13 @@ export function ChatInput({
   onSend,
   onStop,
   isLoading = false,
-  isStopping = false,
   placeholder = 'Message...',
   statusBar,
   className,
   skills,
+  acceptsAttachments = true,
+  awaitingYou = false,
+  onJumpToPending,
 }: ChatInputProps) {
   const [value, setValue] = useState('')
   const [images, setImages] = useState<string[]>([])
@@ -52,7 +54,6 @@ export function ChatInput({
   })
 
   const handleSubmit = useCallback(() => {
-    if (isLoading) return
     const trimmed = value.trim()
     if (!trimmed && images.length === 0 && files.length === 0) return
 
@@ -65,7 +66,7 @@ export function ChatInput({
     setImages([])
     setFiles([])
     // Height resets automatically via useEffect when value changes
-  }, [value, images, files, onSend, isLoading])
+  }, [value, images, files, onSend])
 
   const handleFileSelect = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files
@@ -190,16 +191,16 @@ export function ChatInput({
   const isVoiceActive = isRecording || isTranscribing
 
   return (
-    <div className={cn('px-4 pb-6 pt-2', className)}>
+    // pb-6 is 24px against a 34px home indicator, so the mode chips sat inside
+    // the swipe zone on a notched phone — a gesture aimed at `safe` starts a
+    // system swipe instead. max() keeps the original padding on hardware with
+    // no inset, where env() resolves to 0.
+    <div className={cn('px-4 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))]', className)}>
       <div className="mx-auto max-w-3xl">
         {/* Voice error */}
         {voiceError && (
           <div className="mb-2 flex items-center justify-center gap-2 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-600">
-            <span>
-              {voiceError.message.includes('authentication') || voiceError.message.includes('API')
-                ? 'Please set your OpenOnion API key in Settings'
-                : `Error: ${voiceError.message}`}
-            </span>
+            <span>{voiceErrorMessage(voiceError)}</span>
           </div>
         )}
 
@@ -228,91 +229,89 @@ export function ChatInput({
           </div>
         )}
 
-        {/* Image previews */}
-        {images.length > 0 && (
-          <div className="mb-3 flex gap-2 flex-wrap">
-            {images.map((img, i) => (
-              <div key={i} className="relative group">
-                <img
-                  src={img}
-                  alt={`Upload ${i + 1}`}
-                  className="h-20 w-20 object-cover rounded-xl shadow-sm"
-                />
-                <button
-                  onClick={() => removeImage(i)}
-                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-neutral-800 text-white flex items-center justify-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shadow-md hover:bg-neutral-700"
-                  aria-label="Remove image"
-                >
-                  <HiX className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* File previews */}
-        {files.length > 0 && (
-          <div className="mb-3 flex gap-2 flex-wrap">
-            {files.map((file, i) => (
-              <div key={i} className="relative group flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 shadow-sm">
-                <HiOutlineDocument className="h-4 w-4 text-neutral-400 shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-neutral-700 truncate max-w-[150px]">{file.name}</div>
-                  <div className="text-[11px] text-neutral-400">{formatFileSize(file.size)}</div>
-                </div>
-                <button
-                  onClick={() => removeFile(i)}
-                  className="ml-1 h-5 w-5 rounded-full bg-neutral-100 text-neutral-400 flex items-center justify-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-neutral-200 hover:text-neutral-600"
-                  aria-label="Remove file"
-                >
-                  <HiX className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Skill command palette */}
-        {filteredSkills.length > 0 && (
-          <div className="mb-2 rounded-xl border border-neutral-200 bg-white shadow-md overflow-hidden max-h-60 overflow-y-auto">
-            {filteredSkills.map((skill, i) => (
-              <button
-                key={skill.name}
-                ref={el => { skillRefs.current[i] = el }}
-                type="button"
-                onMouseDown={(e) => {
-                  e.preventDefault()
-                  selectSkill(skill)
-                }}
-                onMouseEnter={() => setSelectedSkillIndex(i)}
-                className={cn(
-                  'flex w-full items-center gap-2.5 px-4 py-2 text-left transition-colors',
-                  i === activeSkillIndex ? 'bg-neutral-100' : 'hover:bg-neutral-50'
-                )}
-              >
-                <span className="shrink-0 whitespace-nowrap font-medium text-[13px] text-neutral-900">/{skill.name}</span>
-                <span className="min-w-0 flex-1 truncate text-xs text-neutral-500">{skill.description}</span>
-              </button>
-            ))}
-            <div className="border-t border-neutral-100 px-4 py-1.5 text-[10px] text-neutral-400">
-              <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1">↑↓</kbd> navigate · <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1">Tab</kbd> complete · <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1">Esc</kbd> dismiss
-            </div>
-          </div>
-        )}
-
         <div className={cn(
           'rounded-2xl border transition-all duration-200',
           isRecording
             ? 'border-red-300 bg-red-50'
             : 'border-neutral-200 bg-neutral-50 focus-within:border-neutral-300 focus-within:bg-white focus-within:shadow-sm'
         )}>
-          {isStopping && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="border-b border-neutral-200 px-4 py-2 text-xs font-medium text-neutral-600"
-            >
-              Stopping…
+          {/* Attachments live inside the composer card, not above it. Outside, the
+              thumbnails sat flush against the page padding and each remove button —
+              absolutely positioned at -top-2 -right-2 — hung outside the container
+              and was clipped on a phone. */}
+        {/* Image previews */}
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-4 pt-3">
+              {images.map((img, i) => (
+                <div key={i} className="relative group">
+                  {/* Attachments arrive as base64 data: URLs in the event stream. next/image
+                      cannot optimise those — it needs a routable URL or a static import — so
+                      plain <img> is correct here, not a shortcut. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img}
+                    alt={`Upload ${i + 1}`}
+                    className="h-20 w-20 object-cover rounded-xl shadow-sm"
+                  />
+                  <button
+                    onClick={() => removeImage(i)}
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-neutral-800 text-white flex items-center justify-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shadow-md hover:bg-neutral-700"
+                    aria-label="Remove image"
+                  >
+                    <HiX className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* File previews */}
+          {files.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-4 pt-3">
+              {files.map((file, i) => (
+                <div key={i} className="relative group flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 shadow-sm">
+                  <HiOutlineDocument className="h-4 w-4 text-neutral-400 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-neutral-700 truncate max-w-[150px]">{file.name}</div>
+                    <div className="text-[11px] text-neutral-400">{formatFileSize(file.size)}</div>
+                  </div>
+                  <button
+                    onClick={() => removeFile(i)}
+                    className="ml-1 h-5 w-5 rounded-full bg-neutral-100 text-neutral-400 flex items-center justify-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity hover:bg-neutral-200 hover:text-neutral-600"
+                    aria-label="Remove file"
+                  >
+                    <HiX className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Skill command palette */}
+          {filteredSkills.length > 0 && (
+            <div className="mb-2 rounded-xl border border-neutral-200 bg-white shadow-md overflow-hidden max-h-60 overflow-y-auto">
+              {filteredSkills.map((skill, i) => (
+                <button
+                  key={skill.name}
+                  ref={el => { skillRefs.current[i] = el }}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    selectSkill(skill)
+                  }}
+                  onMouseEnter={() => setSelectedSkillIndex(i)}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 px-4 py-2 text-left transition-colors',
+                    i === activeSkillIndex ? 'bg-neutral-100' : 'hover:bg-neutral-50'
+                  )}
+                >
+                  <span className="shrink-0 whitespace-nowrap font-medium text-[13px] text-neutral-900">/{skill.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-neutral-500">{skill.description}</span>
+                </button>
+              ))}
+              <div className="border-t border-neutral-100 px-4 py-1.5 text-[11px] text-neutral-400">
+                <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1">↑↓</kbd> navigate · <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1">Tab</kbd> complete · <kbd className="rounded border border-neutral-200 bg-neutral-50 px-1">Esc</kbd> dismiss
+              </div>
             </div>
           )}
           {/* Input row */}
@@ -326,7 +325,13 @@ export function ChatInput({
               className="hidden"
             />
 
-            {/* File picker button - always available */}
+            {/* Only when the agent will take one. Agents publish
+                `accepted_inputs`, the landing page already prints it, and this
+                button ignored it — so a text-only agent still invited a photo
+                that it would refuse. Undeclared means allowed: almost nothing
+                publishes this yet, and hiding attachments from everyone would be
+                the worse error. */}
+            {acceptsAttachments && (
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isVoiceActive}
@@ -335,6 +340,7 @@ export function ChatInput({
             >
               <HiOutlinePlus className="h-4 w-4 stroke-[2.5]" />
             </button>
+            )}
 
             {/* Textarea - always available so user can type during execution */}
             <textarea
@@ -343,7 +349,7 @@ export function ChatInput({
               onChange={handleTextChange}
               onKeyDown={handleKeyDown}
               onInput={resizeTextarea}
-              placeholder={isVoiceActive ? '' : placeholder}
+              placeholder={isVoiceActive ? '' : awaitingYou ? 'Answer above' : placeholder}
               disabled={isVoiceActive}
               spellCheck={!value.startsWith('/')}
               rows={1}
@@ -373,23 +379,37 @@ export function ChatInput({
               )}
             </button>
 
-            {/* Send / Stop button — becomes a stop button while the agent is running */}
-            {isLoading && onStop ? (
+            {/* Send / Stop / jump — while the run is blocked on the reader's own answer,
+                offering to Stop is offering to interrupt work that is not happening.
+                The card scrolls away like any transcript item, so the button that
+                replaces Stop is the one that brings it back (#59). */}
+            {awaitingYou && onJumpToPending ? (
               <button
-                onClick={isStopping ? undefined : onStop}
-                disabled={isVoiceActive || isStopping}
-                aria-label={isStopping ? 'Stopping agent' : 'Stop agent'}
-                title={isStopping ? 'Stopping…' : 'Stop'}
+                onClick={onJumpToPending}
+                aria-label="Jump to the pending question"
+                className={cn(
+                  'flex h-9 shrink-0 items-center gap-1 rounded-xl px-3 text-xs font-medium',
+                  // Black, not amber: the palette is neutral plus one green, and this
+                  // is the "your move" state — the same black the primary actions use.
+                  'bg-neutral-900 text-white transition-all duration-200 hover:bg-neutral-800 active:scale-95 shadow-sm',
+                )}
+              >
+                <span className="hidden sm:inline">Jump to it</span>
+                <span className="sm:hidden">Jump</span>
+                <span aria-hidden="true">↑</span>
+              </button>
+            ) : isLoading && onStop ? (
+              <button
+                onClick={onStop}
+                disabled={isVoiceActive}
+                aria-label="Stop agent"
+                title="Stop"
                 className={cn(
                   'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white transition-all duration-200 active:scale-95 shadow-sm',
                   'bg-neutral-900 hover:bg-neutral-800 disabled:opacity-50'
                 )}
               >
-                {isStopping ? (
-                  <LoadingSpinner />
-                ) : (
-                  <span className="h-3 w-3 rounded-[3px] bg-white" />
-                )}
+                <span className="h-3 w-3 rounded-[3px] bg-white" />
               </button>
             ) : (
               <button
@@ -458,4 +478,37 @@ function LoadingSpinner() {
       />
     </svg>
   )
+}
+
+/** What to tell the reader when dictation fails.
+ *
+ *  The default was `Error: ${message}`, which on a blocked microphone renders
+ *  the browser's own "Permission denied" — words that say neither who denied it
+ *  nor what to do. On a phone, where mic access is a per-site permission people
+ *  decline by reflex and forget, that is a dead end at the second most prominent
+ *  control in the composer. The API-key branch already set the standard by
+ *  naming the fix, so the other common failures now do too.
+ *
+ *  Matched on the DOMException name where there is one, because the message text
+ *  differs between browsers while the name does not. */
+function voiceErrorMessage(error: Error): string {
+  const name = (error as DOMException).name
+  const text = error.message || ''
+
+  // Names first, then text. Matching text first put a NotFoundError whose
+  // message happened to contain "denied" into the permission branch, telling a
+  // reader with no microphone to go and change a permission.
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'No microphone found. Connect one, or type your message instead.'
+  }
+  if (name === 'NotReadableError') {
+    return 'The microphone is in use by another app. Close it and try again.'
+  }
+  if (name === 'NotAllowedError' || /permission|denied/i.test(text)) {
+    return 'Microphone blocked. Allow microphone access for this site in your browser settings, then try again.'
+  }
+  if (/authentication/i.test(text) || /API/.test(text)) {
+    return 'Please set your OpenOnion API key in Settings'
+  }
+  return `Error: ${text}`
 }

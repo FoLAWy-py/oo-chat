@@ -123,7 +123,7 @@ export function UlwFullscreen({
       {activity.length > 0 && (
         <div className="border-t border-neutral-100 px-6 py-2">
           <div className="max-w-2xl mx-auto flex items-center gap-4 overflow-x-auto">
-            <span className="text-[10px] font-medium text-neutral-500 uppercase tracking-wide shrink-0">
+            <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wide shrink-0">
               Activity
             </span>
             <div className="flex items-center gap-2 flex-1 overflow-x-auto">
@@ -165,6 +165,15 @@ function PromptEditor({ label, value, onSave, placeholder, rows }: PromptEditorP
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
 
+  // Adopting a new external value is a state change driven by a prop change, not
+  // a side effect. Adjusting during render shows the new value on the first paint;
+  // the effect form rendered the stale draft once before correcting it.
+  const [lastValue, setLastValue] = useState(value)
+  if (value !== lastValue) {
+    setLastValue(value)
+    if (!editing) setDraft(value)
+  }
+
   const save = useCallback(() => {
     setEditing(false)
     if (draft.trim() !== value) onSave(draft.trim())
@@ -177,7 +186,7 @@ function PromptEditor({ label, value, onSave, placeholder, rows }: PromptEditorP
 
   return (
     <div>
-      <label className="block text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-2">
+      <label className="block text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-2">
         {label}
       </label>
       {editing ? (
@@ -223,21 +232,5 @@ function PromptEditor({ label, value, onSave, placeholder, rows }: PromptEditorP
         </button>
       )}
     </div>
-  )
-}
-
-/** Small expand button to attach to the monitor panel */
-export function UlwExpandButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      title="Full screen (expand)"
-      className="p-1 rounded-lg text-neutral-400
-        hover:text-neutral-600
-        hover:bg-neutral-200 transition-colors"
-      aria-label="Expand to fullscreen"
-    >
-      <HiOutlineArrowsExpand className="w-3.5 h-3.5" />
-    </button>
   )
 }

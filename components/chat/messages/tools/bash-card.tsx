@@ -2,22 +2,16 @@
 
 import React, { useState, useEffect } from 'react'
 import type { ToolCallUI, PendingApproval } from '../../types'
-import {
-  HiOutlineChevronRight,
-  HiOutlineChevronDown,
+import { 
+  HiOutlineChevronRight, 
+  HiOutlineChevronDown, 
   HiOutlineTerminal,
   HiOutlineCheck,
-  HiOutlineX,
   HiOutlineClipboardCopy
 } from 'react-icons/hi'
 import { ApprovalButtons } from './approval-buttons'
-import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-
+import { ToolStatus } from './tool-status'
+import { cn } from '../../utils'
 interface BashCardProps {
   toolCall: ToolCallUI
   pendingApproval?: PendingApproval | null
@@ -81,10 +75,13 @@ function highlightBash(command: string): React.ReactNode[] {
       } else {
         const wordMatch = remaining.match(/^[\w./~@:%-]+/)
         if (wordMatch) {
-          const previousToken = tokens.at(-1)
+          // Every token this loop pushes is a <span className=...>, so the
+          // previous one carrying the operator class means we are at the start
+          // of a new command rather than inside its arguments.
+          const previous = tokens[tokens.length - 1]
           const isCommand = tokens.length === 0 ||
-            (React.isValidElement<{ className?: string }>(previousToken) &&
-             previousToken.props.className === colors.operator)
+            (React.isValidElement<{ className?: string }>(previous) &&
+             previous.props.className === colors.operator)
           tokens.push(<span key={key++} className={isCommand ? colors.command : colors.argument}>{wordMatch[0]}</span>)
           remaining = remaining.slice(wordMatch[0].length)
         } else {
@@ -95,6 +92,13 @@ function highlightBash(command: string): React.ReactNode[] {
     }
   }
   return tokens
+}
+
+function getPreviewLines(result: string, maxLines = 3): { lines: string[]; remaining: number } {
+  const allLines = result.split('\n').filter(l => l.trim())
+  const lines = allLines.slice(0, maxLines)
+  const remaining = allLines.length - maxLines
+  return { lines, remaining: Math.max(0, remaining) }
 }
 
 // Check if this is a "tool blocked" error (from prefer_write_tool plugin)
@@ -117,16 +121,22 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
   const description = args?.description as string | undefined
   const commandName = command?.split(/\s+/)[0] || 'this command'
 
+  const isActuallyRunning = status === 'running' && (!pendingApproval || approvalSent)
+
+  // Resetting the counter is a state change driven by a prop change, not a
+  // side effect. React's documented shape for that is an adjustment during
+  // render — doing it inside the effect renders the stale value once first.
+  const [prevActuallyRunning, setPrevActuallyRunning] = useState(isActuallyRunning)
+  if (prevActuallyRunning !== isActuallyRunning) {
+    setPrevActuallyRunning(isActuallyRunning)
+    setRunningSeconds(0)
+  }
+
   useEffect(() => {
-    const isActuallyRunning = status === 'running' && (!pendingApproval || approvalSent)
     if (!isActuallyRunning) return
-    const reset = window.setTimeout(() => setRunningSeconds(0), 0)
     const interval = setInterval(() => setRunningSeconds(s => s + 1), 1000)
-    return () => {
-      window.clearTimeout(reset)
-      clearInterval(interval)
-    }
-  }, [status, pendingApproval, approvalSent])
+    return () => clearInterval(interval)
+  }, [isActuallyRunning])
 
   // Hide bash card when tool was blocked - tool_blocked card shows instead
   if (status === 'error' && result && isBlockedError(result)) {
@@ -134,6 +144,9 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
   }
 
   const hasOutput = result && result.length > 0
+  const { lines: previewLines, remaining } = hasOutput
+    ? getPreviewLines(result)
+    : { lines: [], remaining: 0 }
 
   const needsApproval = !!pendingApproval && !!onApprovalResponse
 
@@ -153,90 +166,108 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
   }
 
   return (
-    <div className="py-2.5">
-      {/* Header */}
+    <div className="py-1.5">
+      {/* py-1.5 and no bottom margin, like every other tool row. A collapsed row
+          is one line of reference; three of them rendering at 48px, 32px and 28px
+          made the column look like three components doing the same job. The
+          margin only has anything to separate when the row is expanded. */}
       <div
-        className="flex items-center gap-2 cursor-pointer group mb-2"
+        className={cn('flex items-center gap-2 cursor-pointer group', isExpanded && 'mb-2')}
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center gap-1.5 flex-1">
+        {/* One rail. Every tool row reserves the same 60px for its disclosure,
+            status and icon, so the names line up down the column however many
+            of those a given card actually has — bash carries three, read_file
+            two, and their titles used to start 26px apart. */}
+        <div className="flex w-[60px] shrink-0 items-center gap-1.5">
           {isExpanded ? (
             <HiOutlineChevronDown className="w-3.5 h-3.5 text-neutral-400 group-hover:text-neutral-600 transition-colors" />
           ) : (
             <HiOutlineChevronRight className="w-3.5 h-3.5 text-neutral-400 group-hover:text-neutral-600 transition-colors" />
           )}
 
-          {status === 'done' ? (
-            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100/50">
-              <HiOutlineCheck className="w-2.5 h-2.5 text-green-600" />
-            </div>
-          ) : status === 'error' ? (
-            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-red-100/50">
-              <HiOutlineX className="w-2.5 h-2.5 text-red-600" />
-            </div>
-          ) : status === 'running' ? (
-            <div className={cn(
-              "w-2 h-2 rounded-full animate-pulse ml-1",
-              needsApproval && !approvalSent ? "bg-neutral-500" : "bg-neutral-900"
-            )} />
-          ) : (
-            <div className="w-2 h-2 rounded-full bg-neutral-300 ml-1" />
-          )}
+          <ToolStatus status={status} awaitingApproval={needsApproval && !approvalSent} />
 
-          <HiOutlineTerminal className="w-4 h-4 text-neutral-500 ml-0.5" />
-          <span className="text-sm font-bold text-neutral-700 tracking-tight">Bash</span>
+          <HiOutlineTerminal className="w-4 h-4 shrink-0 text-neutral-500" />
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <span className="shrink-0 text-[13px] font-medium text-neutral-800">Bash</span>
           {/* Command is collapsed by default, so the header must never be blank: */}
           {/* show the description if given, otherwise fall back to the command itself. */}
           {description ? (
-            <span className="text-xs text-neutral-400 truncate ml-1">{description}</span>
+            <span className="text-xs text-neutral-500 truncate ml-1">{description}</span>
           ) : command ? (
-            <span className="text-xs text-neutral-400/80 font-mono truncate ml-1">{command}</span>
+            <span className="text-xs text-neutral-500 font-mono truncate ml-1">{command}</span>
           ) : null}
         </div>
 
+        {/* The same quiet ledger meta generic-card already uses. Uppercase at
+            tracking-wide, bolded and pulsing, made the status of a finished tool
+            the loudest thing on the screen — louder than the agent's answer — and
+            animating text delays reading the one word that matters. */}
         <div className="flex items-center gap-2">
           {status === 'done' || status === 'error' ? (
-            <span className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest">
-              {status === 'done' ? 'Exit Code 0' : 'Exit Code 1'} {timing_ms && `(${formatTime(timing_ms)})`}
+            <span className="text-[11px] tabular-nums text-neutral-500">
+              {status === 'done' ? 'exit 0' : 'exit 1'}{timing_ms ? ` · ${formatTime(timing_ms)}` : ''}
             </span>
           ) : needsApproval && approvalSent === 'skipped' ? (
-            <span className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest">Skipped</span>
+            <span className="text-[11px] tabular-nums text-neutral-500">skipped</span>
           ) : needsApproval && approvalSent === 'stopped' ? (
-            <span className="text-red-500 text-[10px] uppercase font-bold tracking-widest">Stopped</span>
+            <span className="text-[11px] font-medium text-red-600">stopped</span>
           ) : needsApproval && !approvalSent ? (
-            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest animate-pulse">Waiting for Permission</span>
+            <span className="text-[11px] tabular-nums text-neutral-500">awaiting approval</span>
           ) : (
-            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest animate-pulse tabular-nums">
-              Running{runningSeconds > 0 ? ` (${formatSeconds(runningSeconds)})` : ''}
+            <span className="text-[11px] tabular-nums text-neutral-500">
+              running{runningSeconds > 0 ? ` · ${formatSeconds(runningSeconds)}` : ''}
             </span>
           )}
         </div>
       </div>
 
-      {/* Terminal block: only rendered when expanded; collapsed means header row only. */}
+      {/* Terminal Block — Claude Code style: only rendered when expanded; collapsed = header row only */}
       {isExpanded && (
-      <div className="ml-5">
+      <div className="ml-[60px]">
         <div className="bg-[#1e1e1e] rounded-lg overflow-hidden relative group/terminal">
           <div
             className="cursor-pointer"
             onClick={() => setIsExpanded(!isExpanded)}
           >
-            <pre className="px-3 py-2.5 text-[13px] text-[#F8F8F2] font-mono whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto leading-relaxed scrollbar-thin scrollbar-thumb-neutral-700">
-              <div className="flex items-start gap-2">
-                <span className="text-[#75715E] select-none">$</span>
-                <div className="flex-1">{highlightBash(command || '')}</div>
-              </div>
-              {hasOutput && (
-                <div className="text-neutral-300 border-t border-[#333] pt-2.5 mt-2.5 opacity-90 text-[12px]">
-                  {result}
+            {isExpanded ? (
+              <pre className="px-3 py-2.5 text-[13px] text-[#F8F8F2] font-mono whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto leading-relaxed scrollbar-thin scrollbar-thumb-neutral-700">
+                <div className="flex items-start gap-2">
+                  <span className="text-[#75715E] select-none">$</span>
+                  <div className="flex-1">{highlightBash(command || '')}</div>
                 </div>
-              )}
-              {!hasOutput && status === 'done' && (
-                <div className="text-[#75715E] mt-2.5 italic text-[11px] font-mono opacity-50">
-                  {'// No output'}
+                {hasOutput && (
+                  <div className="text-neutral-300 border-t border-[#333] pt-2.5 mt-2.5 opacity-90 text-xs">
+                    {result}
+                  </div>
+                )}
+                {!hasOutput && status === 'done' && (
+                  <div className="text-[#75715E] mt-2.5 italic text-[11px] font-mono opacity-50">{'// No output'}</div>
+                )}
+              </pre>
+            ) : (
+              <pre className="px-3 py-2.5 text-[13px] font-mono leading-relaxed">
+                <div className="flex items-start gap-2">
+                  <span className="text-[#75715E] select-none">$</span>
+                  <div className="flex-1 truncate">{highlightBash(command || '')}</div>
                 </div>
-              )}
-            </pre>
+                {hasOutput && (
+                  <div className="mt-2.5 text-neutral-400 border-t border-[#333] pt-2.5 overflow-hidden text-xs">
+                    {previewLines.slice(0, 2).map((line, i) => (
+                      <div key={i} className="truncate opacity-70 mb-0.5">{line}</div>
+                    ))}
+                    {remaining > 0 && (
+                      <div className="text-[#75715E] mt-1.5 text-[11px] opacity-60">
+                        +{remaining + (previewLines.length > 2 ? previewLines.length - 2 : 0)} more lines
+                      </div>
+                    )}
+                  </div>
+                )}
+              </pre>
+            )}
           </div>
           {/* Copy button - appears on hover */}
           <button
@@ -244,7 +275,7 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
             className="absolute top-2 right-2 text-neutral-600 hover:text-neutral-300 transition-all p-1 rounded opacity-100 lg:opacity-0 lg:group-hover/terminal:opacity-100 focus-visible:opacity-100"
             title="Copy command"
           >
-            {copied ? <HiOutlineCheck className="w-3.5 h-3.5 text-green-500" /> : <HiOutlineClipboardCopy className="w-3.5 h-3.5" />}
+            {copied ? <HiOutlineCheck className="w-3.5 h-3.5 text-brand-500" /> : <HiOutlineClipboardCopy className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
@@ -252,7 +283,7 @@ export function BashCard({ toolCall, pendingApproval, onApprovalResponse }: Bash
 
       {/* Approval Buttons */}
       {needsApproval && status === 'running' && (
-        <div className="mt-4 ml-5 animate-in fade-in slide-in-from-top-2 duration-400">
+        <div className="mt-4 ml-[60px] animate-in fade-in slide-in-from-top-2 duration-400">
           <ApprovalButtons approvalSent={approvalSent} onApproval={handleApproval} toolName={commandName} description={pendingApproval?.description} batchRemaining={pendingApproval?.batch_remaining} />
         </div>
       )}

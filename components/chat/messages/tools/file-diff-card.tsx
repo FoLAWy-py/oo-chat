@@ -1,33 +1,21 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  HiOutlinePencil,
-  HiOutlineCheck,
+import { 
+  HiOutlinePencil, 
+  HiOutlineCheck, 
   HiOutlineClipboard
 } from 'react-icons/hi'
-import { ApprovalButtons } from './approval-buttons'
+import type { ToolCallUI, PendingApproval } from '../../types'
+import { ApprovalButtons, type ApprovalState } from './approval-buttons'
 import { Modal } from '@/components/ui/modal'
 import { getFileName } from './file-utils'
 import { CompactHeader, FileCodePeek, FileDiffSideBySideView } from './file-components'
-import type { PendingApproval, ToolCallUI } from '../../types'
-
-type ApprovalState = 'approved' | 'approved_session' | 'skipped' | 'stopped' | null
-type RejectionMode = 'reject_soft' | 'reject_hard' | 'reject_explain'
 
 interface FileDiffCardProps {
   toolCall: ToolCallUI
   pendingApproval?: PendingApproval | null
-  onApprovalResponse?: (
-    approved: boolean,
-    scope: 'once' | 'session',
-    mode?: RejectionMode,
-    feedback?: string,
-  ) => void
-}
-
-function firstString(...values: unknown[]): string {
-  return values.find((value): value is string => typeof value === 'string') ?? ''
+  onApprovalResponse?: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
 }
 
 export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: FileDiffCardProps) {
@@ -36,21 +24,18 @@ export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: 
   const [copied, setCopied] = useState(false)
 
   const { name, args, status, timing_ms } = toolCall
-  const filePath = firstString(args?.file_path, args?.path, args?.filename)
-
-  const oldStr = firstString(args?.old_string)
-  const newStr = firstString(args?.new_string)
+  const filePath = (args?.file_path || args?.path || args?.filename || '') as string
+  
+  const oldStr = (args?.old_string as string) || ''
+  const newStr = (args?.new_string as string) || ''
   const diffContent = oldStr || newStr ? [
     oldStr ? `- ${oldStr.split('\n').join('\n- ')}` : '',
     newStr ? `+ ${newStr.split('\n').join('\n+ ')}` : ''
   ].filter(Boolean).join('\n') : ''
 
-  const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: RejectionMode) => {
+  const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain') => {
     if (approvalSent) return
-    setApprovalSent(
-      approved ? (scope === 'session' ? 'approved_session' : 'approved')
-        : mode === 'reject_soft' ? 'skipped' : 'stopped'
-    )
+    setApprovalSent(approved ? 'approved' : mode === 'reject_soft' ? 'skipped' : 'stopped')
     onApprovalResponse?.(approved, scope, mode)
   }
 
@@ -62,26 +47,26 @@ export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: 
   }
 
   return (
-    <div className="py-2.5">
-      <CompactHeader
+    <div>
+      <CompactHeader 
         toolName="Edit"
         fileName={getFileName(filePath)} Icon={HiOutlinePencil}
         status={status} timingMs={timing_ms} approvalSent={approvalSent}
         needsApproval={!!pendingApproval}
       />
-
-      <div className="ml-5 relative group/card">
+      
+      <div className="ml-[60px] relative group/card">
         <FileCodePeek content={diffContent} filePath={filePath} isDiff onClick={() => setIsFullscreen(true)} />
-
+        
         {/* Quick actions */}
         {diffContent && (
           <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
-            <button
+            <button 
               onClick={handleCopy}
               className="p-1.5 bg-neutral-900/80 hover:bg-neutral-900 text-white rounded-lg shadow-lg border border-white/10 transition-all"
               title="Copy diff"
             >
-              {copied ? <HiOutlineCheck className="w-3.5 h-3.5 text-green-400" /> : <HiOutlineClipboard className="w-3.5 h-3.5" />}
+              {copied ? <HiOutlineCheck className="w-3.5 h-3.5 text-brand-400" /> : <HiOutlineClipboard className="w-3.5 h-3.5" />}
             </button>
           </div>
         )}
@@ -92,10 +77,10 @@ export function FileDiffCard({ toolCall, pendingApproval, onApprovalResponse }: 
       </Modal>
 
       {!!pendingApproval && status === 'running' && (
-        <div className="mt-4 ml-5">
-          <ApprovalButtons
-            approvalSent={approvalSent} onApproval={handleApproval}
-            toolName={name} description={pendingApproval.description}
+        <div className="mt-4 ml-[60px]">
+          <ApprovalButtons 
+            approvalSent={approvalSent} onApproval={handleApproval} 
+            toolName={name} description={pendingApproval.description} 
             batchRemaining={pendingApproval.batch_remaining}
           />
         </div>

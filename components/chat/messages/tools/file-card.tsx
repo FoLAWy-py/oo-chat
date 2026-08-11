@@ -1,49 +1,39 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  HiOutlineCheck,
+import { 
+  HiOutlineCheck, 
   HiOutlineClipboard
 } from 'react-icons/hi'
-import { ApprovalButtons } from './approval-buttons'
+import type { ToolCallUI, PendingApproval } from '../../types'
+import { ApprovalButtons, type ApprovalState } from './approval-buttons'
 import { Modal } from '@/components/ui/modal'
 import { getFileName, getFileIcon } from './file-utils'
 import { CompactHeader, FileCodePeek, FileFullView } from './file-components'
-import type { PendingApproval, ToolCallUI } from '../../types'
-
-type ApprovalState = 'approved' | 'approved_session' | 'skipped' | 'stopped' | null
-type RejectionMode = 'reject_soft' | 'reject_hard' | 'reject_explain'
 
 interface FileCardProps {
   toolCall: ToolCallUI
   pendingApproval?: PendingApproval | null
-  onApprovalResponse?: (
-    approved: boolean,
-    scope: 'once' | 'session',
-    mode?: RejectionMode,
-    feedback?: string,
-  ) => void
-}
-
-function firstString(...values: unknown[]): string {
-  return values.find((value): value is string => typeof value === 'string') ?? ''
+  onApprovalResponse?: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
 }
 
 export function FileCard({ toolCall, pendingApproval, onApprovalResponse }: FileCardProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [approvalSent, setApprovalSent] = useState<ApprovalState>(null)
+  // This card used to have no open/closed state at all: it rendered its file
+  // body unconditionally and CompactHeader had no chevron to show, so a reader
+  // saw content with no control while the card beside it showed a chevron and
+  // nothing. The chevron is the state now, in every card.
+  const [isExpanded, setIsExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const { name, args, status, result, timing_ms } = toolCall
-  const filePath = firstString(args?.file_path, args?.path, args?.filename)
-  const content = name.toLowerCase() === 'write' ? firstString(args?.content) : result || ''
-
-  const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: RejectionMode) => {
+  const filePath = (args?.file_path || args?.path || args?.filename || '') as string
+  const content = ((name.toLowerCase() === 'write' ? args?.content : result) as string | undefined) || ''
+  
+  const handleApproval = (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain') => {
     if (approvalSent) return
-    setApprovalSent(
-      approved ? (scope === 'session' ? 'approved_session' : 'approved')
-        : mode === 'reject_soft' ? 'skipped' : 'stopped'
-    )
+    setApprovalSent(approved ? 'approved' : mode === 'reject_soft' ? 'skipped' : 'stopped')
     onApprovalResponse?.(approved, scope, mode)
   }
 
@@ -54,40 +44,45 @@ export function FileCard({ toolCall, pendingApproval, onApprovalResponse }: File
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // No padding on this wrapper: CompactHeader owns the row's own py-1.5, and
+  // stacking the two made this row 52px against its neighbours' 32px.
   return (
-    <div className="py-2.5">
-      <CompactHeader
+    <div>
+      <CompactHeader 
         toolName={name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()}
         fileName={getFileName(filePath)} Icon={getFileIcon(name)}
         status={status} timingMs={timing_ms} approvalSent={approvalSent}
         needsApproval={!!pendingApproval}
+        isExpanded={isExpanded} onToggle={content ? () => setIsExpanded(v => !v) : undefined}
       />
 
-      <div className="ml-5 relative group/card">
+      {isExpanded && content && (
+      <div className="ml-[60px] relative group/card">
         <FileCodePeek content={content} filePath={filePath} onClick={() => setIsFullscreen(true)} />
-
+        
         {content && (
           <div className="absolute top-2 right-2 flex gap-1.5 opacity-100 lg:opacity-0 lg:group-hover/card:opacity-100 transition-opacity">
-            <button
+            <button 
               onClick={handleCopy}
               className="p-1.5 bg-neutral-900/80 hover:bg-neutral-900 text-white rounded-lg shadow-lg border border-white/10 transition-all"
               title="Copy content"
             >
-              {copied ? <HiOutlineCheck className="w-3.5 h-3.5 text-green-400" /> : <HiOutlineClipboard className="w-3.5 h-3.5" />}
+              {copied ? <HiOutlineCheck className="w-3.5 h-3.5 text-brand-400" /> : <HiOutlineClipboard className="w-3.5 h-3.5" />}
             </button>
           </div>
         )}
       </div>
+      )}
 
       <Modal isOpen={isFullscreen} onClose={() => setIsFullscreen(false)} title={`${name.charAt(0).toUpperCase() + name.slice(1).toLowerCase()}  ·  ${getFileName(filePath)}`}>
         <FileFullView content={content} filePath={filePath} />
       </Modal>
 
       {!!pendingApproval && status === 'running' && (
-        <div className="mt-4 ml-5">
-          <ApprovalButtons
-            approvalSent={approvalSent} onApproval={handleApproval}
-            toolName={name} description={pendingApproval.description}
+        <div className="mt-4 ml-[60px]">
+          <ApprovalButtons 
+            approvalSent={approvalSent} onApproval={handleApproval} 
+            toolName={name} description={pendingApproval.description} 
             batchRemaining={pendingApproval.batch_remaining}
           />
         </div>

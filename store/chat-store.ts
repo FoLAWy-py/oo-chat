@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { FileAttachment } from '@/components/chat/types'
 // The transcript itself is NOT here: its single source of truth is the SDK's
 // per-session store (co:agent:{address}:session:{sessionId}). This store only
 // indexes conversations for the sidebar.
@@ -17,12 +18,6 @@ export interface UserProfile {
   balance_usd: number
 }
 
-export interface PendingMessage {
-  content: string
-  images?: string[]
-  files?: import('@/components/chat/types').FileAttachment[]
-}
-
 interface ChatState {
   // Persisted
   conversations: Conversation[]
@@ -32,7 +27,16 @@ interface ChatState {
   // Auth state (persisted)
   userProfile: UserProfile | null
   // Transient state (not persisted)
-  pendingMessage: PendingMessage | null  // Full first-turn payload sent after navigation
+  pendingMessage: string | null  // Message to send after navigation
+  // Anything attached with it. Sending from the landing page navigates first and
+  // sends on arrival, so whatever the composer held has to travel too — it used
+  // to be dropped here, silently, after the reader had already seen the
+  // thumbnail sitting in the composer.
+  pendingImages: string[] | null
+  // And files. #106 carried images across this navigation and stopped there,
+  // leaving the third argument of onSend(content, images, files) still on the
+  // floor — the same drop, one parameter over.
+  pendingFiles: FileAttachment[] | null
   _hasHydrated: boolean
 }
 
@@ -46,8 +50,8 @@ interface ChatActions {
   setApiKey: (apiKey: string) => void
   setUserProfile: (profile: UserProfile | null) => void
   clearActive: () => void
-  setPendingMessage: (message: PendingMessage | null) => void
-  consumePendingMessage: () => PendingMessage | null
+  setPendingMessage: (message: string | null, images?: string[], files?: FileAttachment[]) => void
+  consumePendingMessage: () => { message: string | null; images: string[] | null; files: FileAttachment[] | null }
 }
 
 type ChatStore = ChatState & ChatActions
@@ -62,6 +66,8 @@ export const useChatStore = create<ChatStore>()(
       openonionApiKey: '',
       userProfile: null,
       pendingMessage: null,
+      pendingImages: null,
+      pendingFiles: null,
       _hasHydrated: false,
 
       createConversation: (sessionId, agentAddress) => {
@@ -146,14 +152,20 @@ export const useChatStore = create<ChatStore>()(
         set({ activeSessionId: null })
       },
 
-      setPendingMessage: (message) => {
-        set({ pendingMessage: message })
+      setPendingMessage: (message, images, files) => {
+        set({
+          pendingMessage: message,
+          pendingImages: images?.length ? images : null,
+          pendingFiles: files?.length ? files : null,
+        })
       },
 
       consumePendingMessage: () => {
         const message = get().pendingMessage
-        set({ pendingMessage: null })
-        return message
+        const images = get().pendingImages
+        const files = get().pendingFiles
+        set({ pendingMessage: null, pendingImages: null, pendingFiles: null })
+        return { message, images, files }
       },
     }),
     {
@@ -161,8 +173,8 @@ export const useChatStore = create<ChatStore>()(
       onRehydrateStorage: () => () => {
         useChatStore.setState({ _hasHydrated: true })
       },
-      // Exclude the transient first-turn payload from persistence. It can carry
-      // base64 attachments and is consumed immediately after route navigation.
+      // Exclude transient state from persistence. Nothing here carries
+      // images — the transcript (and its sanitizing) lives in the SDK store.
       partialize: (state) => ({
         conversations: state.conversations,
         activeSessionId: state.activeSessionId,

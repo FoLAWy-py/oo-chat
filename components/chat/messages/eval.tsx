@@ -11,18 +11,23 @@ export function Eval({ eval: evalData }: EvalProps) {
   const isEvaluating = evalData.status === 'evaluating'
 
   // Timer for evaluating state
+  // Resetting the counters is a state change driven by a prop change, not a
+  // side effect. React's documented shape for that is an adjustment during
+  // render — doing it inside the effect makes the stale value render once first.
+  const [prevIsEvaluating, setPrevIsEvaluating] = useState(isEvaluating)
+  if (prevIsEvaluating !== isEvaluating) {
+    setPrevIsEvaluating(isEvaluating)
+    setSeconds(0)
+  }
+
   useEffect(() => {
     if (!isEvaluating) return
 
-    const reset = window.setTimeout(() => setSeconds(0), 0)
     const interval = setInterval(() => {
       setSeconds(s => s + 1)
     }, 1000)
 
-    return () => {
-      window.clearTimeout(reset)
-      clearInterval(interval)
-    }
+    return () => clearInterval(interval)
   }, [isEvaluating])
 
   // Evaluating state - show spinner
@@ -50,14 +55,14 @@ export function Eval({ eval: evalData }: EvalProps) {
 
     return (
       <div className="flex justify-start py-1">
-        <div className={`border-l-2 pl-3 ${passed ? 'border-green-200' : 'border-red-200'}`}>
+        <div className={`border-l-2 pl-3 ${passed ? 'border-brand-200' : 'border-red-200'}`}>
           {/* Summary line - clickable to expand if has details */}
           <button
             onClick={() => hasDetails && setExpanded(!expanded)}
             className={`flex items-start gap-1.5 text-xs text-neutral-500 ${hasDetails ? 'hover:text-neutral-700 cursor-pointer' : 'cursor-default'} transition-colors text-left`}
           >
             {/* Status icon */}
-            <span className={`flex-shrink-0 ${passed ? 'text-green-500' : 'text-red-500'}`}>
+            <span className={`flex-shrink-0 ${passed ? 'text-brand-500' : 'text-red-500'}`}>
               {passed ? '✓' : '✗'}
             </span>
             {/* Summary text */}

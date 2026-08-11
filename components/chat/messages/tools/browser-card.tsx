@@ -155,7 +155,7 @@ export function BrowserCard({ toolCall, pendingApproval, onApprovalResponse }: B
         <span className={`text-[13px] font-medium shrink-0 whitespace-nowrap ${isError ? 'text-red-600' : 'text-neutral-800'}`}>{verb}</span>
         {detail && <span className="min-w-0 flex-1 truncate font-mono text-xs text-neutral-500">{detail}</span>}
 
-        <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] tabular-nums text-neutral-400">
+        <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] tabular-nums text-neutral-500">
           {status === 'done' || status === 'error' ? (
             timing_ms ? formatTime(timing_ms) : null
           ) : needsApproval && approvalSent ? (
@@ -172,26 +172,26 @@ export function BrowserCard({ toolCall, pendingApproval, onApprovalResponse }: B
 
       {/* Collapsed error rows surface the failure reason inline — one truncated line */}
       {isError && hasOutput && !isExpanded && (
-        <div className="ml-7 mb-1 truncate text-xs text-red-600/80">{result.split('\n')[0]}</div>
+        <div className="ml-[60px] mb-1 truncate text-xs text-red-600/80">{result.split('\n')[0]}</div>
       )}
 
       {needsApproval && status === 'running' && (
-        <div className="mt-2 ml-5 mb-2">
+        <div className="mt-2 ml-[60px] mb-2">
           <ApprovalButtons approvalSent={approvalSent} onApproval={handleApproval} toolName={name} description={pendingApproval?.description} batchRemaining={pendingApproval?.batch_remaining} />
         </div>
       )}
 
       {isExpanded && (hasArgs || hasOutput) && (
-        <div className="animate-in mb-1 ml-7 overflow-hidden rounded-md border border-neutral-200 bg-white">
+        <div className="animate-in mb-1 ml-[60px] overflow-hidden rounded-md border border-neutral-200 bg-white">
           {hasArgs && (
             <div className={`px-3 py-2.5 ${hasOutput ? 'border-b border-neutral-100' : ''}`}>
-              <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400">Arguments</div>
+              <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500">Arguments</div>
               <KVRows data={unwrapArgs(args)} />
             </div>
           )}
           {hasOutput && (
             <div className={`px-3 py-2.5 ${isError ? 'bg-red-50/50' : ''}`}>
-              <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400">Result</div>
+              <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500">Result</div>
               {typeof parsedResult === 'string' ? (
                 <pre className={`whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-72 overflow-y-auto ${isError ? 'text-red-700' : 'text-neutral-700'}`}>
                   {parsedResult}

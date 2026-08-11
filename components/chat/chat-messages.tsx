@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useMemo, useState } from 'react'
+import { pinToBottom } from './pin-to-bottom'
 import { HiOutlineArrowDown } from 'react-icons/hi'
 import { cn } from './utils'
 import { User, Agent, Thinking, ToolCall, AskUser, OnboardRequired, OnboardSuccess, Intent, Eval, Compact, ToolBlocked, FilesReceived } from './messages'
 import { ChatAskUser } from './chat-ask-user'
 import { ChatUlwCheckpoint } from './chat-ulw-checkpoint'
-import type { ChatMessagesProps, OnboardRequiredUI, OnboardSuccessUI, IntentUI, EvalUI, CompactUI, ToolBlockedUI, UlwTurnsReachedUI, PendingPlanReview, FilesReceivedUI } from './types'
+import type { ChatMessagesProps, OnboardRequiredUI, OnboardSuccessUI, IntentUI, EvalUI, CompactUI, ToolBlockedUI, UlwTurnsReachedUI, FilesReceivedUI } from './types'
 
 export function ChatMessages({
   ui = [],
@@ -28,13 +29,33 @@ export function ChatMessages({
   // back down who scrolled up. Streamed tokens grow items in place (ui.length
   // unchanged), so we watch content height, not the item count.
   const stickToBottomRef = useRef(true)
+  // Where the last pin left the scroll. A pin lands wherever the current
+  // scrollHeight allows, and when the content is about to grow that is short of
+  // the eventual bottom — 100px short, in the case #113 measured. The scroll
+  // event it emits then looks exactly like the reader dragging away, so
+  // handleScroll disengaged the stick and the pin never ran again.
+  //
+  // Compared by position rather than by a "we are scrolling" flag: a flag
+  // swallows whatever event arrives next, and during streaming that is often the
+  // reader's own wheel. CI caught exactly that — "the wheel gesture did not move
+  // the transcript" — which would have traded #113 for a transcript you cannot
+  // scroll back through at all.
+  const pinnedTopRef = useRef(-1)
   const [showScrollDown, setShowScrollDown] = useState(false)
 
   const handleScroll = () => {
     const el = scrollRef.current
     if (!el) return
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-    stickToBottomRef.current = atBottom
+
+    // Only a gesture may disengage the stick, never our own pin: if the position
+    // is exactly where the pin put it, this event is the pin's echo. But the
+    // button is a display of where we are, not a decision about intent, so it
+    // updates either way — returning early from the whole handler left a button
+    // shown mid-stream still on screen after a pin had reached the bottom, with
+    // nothing to go back to.
+    const isPinEcho = Math.round(el.scrollTop) === pinnedTopRef.current
+    if (!isPinEcho) stickToBottomRef.current = atBottom
     setShowScrollDown(!atBottom)
   }
 
@@ -50,11 +71,24 @@ export function ChatMessages({
     const el = scrollRef.current
     const content = contentRef.current
     if (!el || !content) return
-    const observer = new ResizeObserver(() => {
-      if (stickToBottomRef.current) el.scrollTop = el.scrollHeight
-    })
+    // Converge rather than guess a frame count — see pinToBottom, and #113 for
+    // the measurement that showed one rAF is not enough.
+    let queued: number | null = null
+    const pin = () => {
+      if (queued !== null) cancelAnimationFrame(queued)
+      queued = pinToBottom(
+        el,
+        cb => requestAnimationFrame(cb),
+        () => stickToBottomRef.current,
+        { onPinned: top => { pinnedTopRef.current = top } },
+      )
+    }
+    const observer = new ResizeObserver(pin)
     observer.observe(content)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      if (queued !== null) cancelAnimationFrame(queued)
+    }
   }, [])
 
   // Find the last thinking item ID (for folding previous ones)
@@ -66,8 +100,14 @@ export function ChatMessages({
   // Find the last tool_call that matches the pending approval (by tool name)
   // Backend sends approval key as "bash:uname" format — match against base name before ":"
   const approvalToolName = pendingApproval?.tool.split(':')[0].toLowerCase()
+  // `status === 'running'` matters: matching on name alone attaches the buttons to
+  // whichever same-named call is last in the array, which after a second bash call
+  // can be one that already finished. The approval then decorates a completed card
+  // while the live one sits plain, and the reader answers about the wrong thing.
   const pendingToolId = pendingApproval
-    ? ui.filter(item => item.type === 'tool_call' && item.name.toLowerCase() === approvalToolName)
+    ? ui.filter(item => item.type === 'tool_call'
+        && item.name.toLowerCase() === approvalToolName
+        && item.status === 'running')
         .pop()?.id
     : null
 
@@ -108,7 +148,19 @@ export function ChatMessages({
       className={cn('flex-1 overflow-y-auto overflow-x-hidden py-6 px-4', className)}
     >
       {/* Centered container with max-width matching input */}
-      <div ref={contentRef} className="mx-auto max-w-3xl space-y-1">
+      {/* The transcript is append-only, which is what role="log" describes, and
+          polite so a reply does not interrupt what the reader is already hearing.
+          Without it a screen-reader user sends a message and hears nothing back:
+          not the reply, not "thinking", and not the approval card that has paused
+          the run waiting on them. */}
+      <div
+        ref={contentRef}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-label="Conversation"
+        className="mx-auto max-w-3xl space-y-1"
+      >
         {ui.map((item) => {
           switch (item.type) {
             case 'user':
@@ -116,15 +168,24 @@ export function ChatMessages({
             case 'agent':
               return <Agent key={item.id} message={item} />
             case 'thinking':
-              return <Thinking key={item.id} thinking={item} isLast={item.id === lastThinkingId} />
+              return <Thinking
+                key={item.id}
+                thinking={item}
+                isLast={item.id === lastThinkingId}
+                blocked={Boolean(pendingApproval || pendingAskUser)}
+              />
             case 'tool_call': {
               // Pass approval info if this tool needs approval
               const needsApproval = item.id === pendingToolId
               const isAskUser = item.id === pendingAskUserToolId
               const isPlanReview = item.id === pendingPlanToolId
+              // Marks whichever card is actually waiting on the reader, so the
+              // composer's "Jump to it" can find it without threading a ref through
+              // this list.
+              const awaitsReader = needsApproval || isAskUser || isPlanReview
               return (
+                <div key={item.id} {...(awaitsReader ? { 'data-pending-decision': '' } : {})}>
                 <ToolCall
-                  key={item.id}
                   toolCall={item}
                   pendingApproval={needsApproval ? pendingApproval : undefined}
                   onApprovalResponse={needsApproval ? onApprovalResponse : undefined}
@@ -134,6 +195,7 @@ export function ChatMessages({
                   pendingPlanReview={isPlanReview ? pendingPlanReview : undefined}
                   onPlanReviewResponse={isPlanReview ? onPlanReviewResponse : undefined}
                 />
+                </div>
               )
             }
             case 'ask_user':

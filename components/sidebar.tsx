@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useMemo } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -10,41 +11,37 @@ import {
   HiOutlineChevronDown,
   HiOutlineChevronRight,
   HiOutlineSparkles,
-  HiOutlineChatAlt2,
-  HiOutlineLightningBolt,
-  HiOutlineClock,
 } from 'react-icons/hi'
 import { useChatStore } from '@/store/chat-store'
 import { useAgentInfo } from '@/hooks/use-agent-info'
 import { AgentHeader } from '@/components/agent-header'
 import { SessionList } from '@/components/session-list'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { deleteServerSession, deleteServerSessions } from '@/components/chat/session-lifecycle'
-import { version as connectonionVersion } from 'connectonion/package.json'
+// The SDK this app actually runs on. It used to read `connectonion/package.json`,
+// which npm installed as a peer of @connectonion/react and which no longer exists:
+// the protocol moved into the React package, so that is the version to show.
+import { version as connectonionVersion } from '@connectonion/react/package.json'
 
 interface SidebarProps {
   isOpen: boolean
   onClose: () => void
 }
 
-// App-level destinations. `Chats` is live; the rest are reserved for upcoming
-// features (rendered disabled with a SOON badge). Add entries here as they ship.
-const NAV_ITEMS = [
-  { key: 'chats', label: 'Chats', Icon: HiOutlineChatAlt2, soon: false },
-  { key: 'automation', label: 'Automation', Icon: HiOutlineLightningBolt, soon: true },
-  { key: 'schedule', label: 'Schedule', Icon: HiOutlineClock, soon: true },
-] as const
-
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const { agents, conversations, deleteConversation, removeAgent, userProfile } = useChatStore()
+  const { agents, conversations, deleteConversation, removeAgent } = useChatStore()
   const infoMap = useAgentInfo(agents)
+  // Agents whose full history is showing. The sidebar lists the newest eight and
+  // offered "N older chats →" as a link to the agent's landing page — which lists
+  // none of them. Measured: zero session links there. So the rest were
+  // unreachable from the interface, and the reader was told where their history
+  // was and found an empty room. It expands here instead, where they are looking.
+  const [showAllFor, setShowAllFor] = useState<Set<string>>(new Set())
 
   // Track which agents are expanded (all expanded by default)
   const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set())
   const [pendingRemove, setPendingRemove] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
 
   // Auto-expand new agents
   const isExpanded = (address: string) => !expandedAgents.has(address) // inverted: Set tracks collapsed agents
@@ -92,26 +89,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     })
   }
 
-  const handleDeleteSession = async (sessionId: string) => {
+  const handleDeleteSession = (sessionId: string) => {
     const session = conversations.find(c => c.sessionId === sessionId)
-    if (!session || deleting) return
-    setDeleting(true)
-    try {
-      await deleteServerSession(sessionId)
-      deleteConversation(sessionId)
-      // If we deleted the active session, go to agent landing
-      if (activeSessionId === sessionId) {
-        router.push(`/${session.agentAddress}`)
-      }
-    } catch (error) {
-      window.alert(error instanceof Error ? error.message : 'Session cleanup failed')
-    } finally {
-      setDeleting(false)
+    deleteConversation(sessionId)
+    // If we deleted the active session, go to agent landing
+    if (activeSessionId === sessionId && session) {
+      router.push(`/${session.agentAddress}`)
     }
   }
 
   const isSettingsActive = pathname === '/settings'
-  const isChatsActive = !isSettingsActive
 
   return (
     <>
@@ -122,18 +109,30 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         />
       )}
 
-      <aside className={`
+      {/* `invisible` when closed, not just translated off-screen. A drawer that is
+          only moved out of view stays in the tab order and in the accessibility
+          tree: on a phone, tabbing off the menu button walked through every agent
+          row, every session link, and every Remove/Delete button while the page
+          appeared frozen — and those destructive buttons were activatable unseen.
+          visibility also removes it from the a11y tree, costs no JS, and follows
+          the lg breakpoint on its own. Transitioning it lets the slide-out finish
+          before it flips (visibility is discrete: it waits the full duration going
+          to hidden, and applies immediately coming back). */}
+      <aside
+        aria-label="Conversations"
+        className={`
         fixed lg:relative inset-y-0 left-0 z-50 w-72 bg-white flex flex-col
-        transform transition-transform duration-200 ease-out lg:translate-x-0
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] lg:pt-0 lg:pb-0
+        transform transition-[transform,visibility] duration-200 ease-out lg:translate-x-0 lg:visible
+        ${isOpen ? 'translate-x-0' : '-translate-x-full invisible'}
         border-r border-neutral-200
       `}>
         {/* Header with Logo */}
         <div className="px-4 h-14 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <Link href="/" className="flex items-center gap-2.5 group min-w-0">
-              <img
-                src="https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png"
+              <Image
+                src="/onion.png"
                 alt="OpenOnion"
                 width={28}
                 height={28}
@@ -142,17 +141,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               <span className="font-semibold text-[15px] text-neutral-900 tracking-tight">oo-chat</span>
             </Link>
             <a
-              href={`https://www.npmjs.com/package/connectonion/v/${connectonionVersion}`}
+              href={`https://www.npmjs.com/package/@connectonion/react/v/${connectonionVersion}`}
               target="_blank"
               rel="noopener noreferrer"
-              title={`connectonion v${connectonionVersion} — view on npm`}
-              className="px-1.5 py-0.5 rounded-md text-[10px] font-mono font-medium text-neutral-400 bg-neutral-100 hover:text-neutral-700 hover:bg-neutral-200 transition-colors"
+              title={`@connectonion/react v${connectonionVersion} — view on npm`}
+              className="inline-flex min-h-6 items-center px-1.5 rounded-md text-[11px] font-mono font-medium text-neutral-400 bg-neutral-100 hover:text-neutral-700 hover:bg-neutral-200 transition-colors"
             >
               v{connectonionVersion}
             </a>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close menu"
             className="lg:hidden p-1.5 -mr-1.5 text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 rounded-md transition-colors"
           >
             <HiOutlineX className="w-5 h-5" />
@@ -163,65 +163,25 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="px-4 pb-1 flex items-center gap-2">
           {onlineCount > 0 ? (
             <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-500 opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-brand-500" />
             </span>
           ) : (
             <span className="h-1.5 w-1.5 rounded-full bg-neutral-300" />
           )}
-          <span className="text-[10px] font-mono tracking-[0.12em] text-neutral-500 uppercase">
+          <span className="text-[11px] font-mono tracking-[0.12em] text-neutral-500 uppercase">
             {onlineCount > 0
               ? `${onlineCount} agent${onlineCount > 1 ? 's' : ''} online`
               : 'all agents offline'}
           </span>
         </div>
 
-        {/* Nav rail — Chats live, others reserved */}
-        <nav className="px-2 pt-2 pb-1 space-y-0.5">
-          {NAV_ITEMS.map(({ key, label, Icon, soon }) => {
-            const active = key === 'chats' && isChatsActive
-            if (soon) {
-              return (
-                <div
-                  key={key}
-                  className="relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-neutral-400 cursor-not-allowed select-none"
-                  title="Coming soon"
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className="flex-1">{label}</span>
-                  <span className="text-[9px] font-mono font-semibold tracking-widest text-neutral-400 border border-neutral-200 rounded px-1 py-0.5">
-                    SOON
-                  </span>
-                </div>
-              )
-            }
-            return (
-              <Link
-                key={key}
-                href="/"
-                onClick={onClose}
-                className={`relative flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  active
-                    ? 'bg-neutral-100 text-neutral-900 font-medium'
-                    : 'text-neutral-600 hover:bg-neutral-100/70'
-                }`}
-              >
-                {active && (
-                  <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-neutral-900" />
-                )}
-                <Icon className={`w-4 h-4 shrink-0 ${active ? 'text-neutral-900' : 'text-neutral-400'}`} />
-                <span className="flex-1">{label}</span>
-              </Link>
-            )
-          })}
-        </nav>
-
         {/* Agents section label */}
         <div className="px-4 pt-3 pb-1 flex items-center justify-between shrink-0">
-          <span className="text-[10px] font-mono tracking-[0.12em] text-neutral-500 uppercase">
+          <span className="text-[11px] font-mono tracking-[0.12em] text-neutral-500 uppercase">
             Agents
           </span>
-          <span className="text-[10px] font-mono text-neutral-500">{agents.length}</span>
+          <span className="text-[11px] font-mono text-neutral-500">{agents.length}</span>
         </div>
 
         {/* Agent Folders */}
@@ -279,8 +239,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                       </Link>
 
                       {/* Action buttons — always visible on touch, hover-revealed on desktop */}
-                      {/* 36px+ touch targets on mobile (gap keeps + and × apart); compact on desktop */}
-                      <div className="flex items-center gap-1 lg:gap-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 transition-opacity">
+                      {/* 36px+ touch targets on mobile; compact on desktop. The gap is 8px, not 4:
+                          × removes the agent and sits next to +, which starts a chat, and a
+                          thumb is about 9mm wide. The confirm dialog is the real backstop,
+                          but nobody should be reaching it by accident. */}
+                      <div className="flex items-center gap-2 lg:gap-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 transition-opacity">
                         <Link
                           href={`/${address}`}
                           onClick={onClose}
@@ -304,25 +267,25 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                       </div>
                     </div>
 
-                    {/* Sessions (expanded) — newest 8; the agent page lists the rest */}
+                    {/* Sessions (expanded) — newest 8, with the rest one press away. The list
+                        area scrolls, so showing all of them is safe. */}
                     {expanded && sessions.length > 0 && (
                       <div className="ml-5 mt-0.5 mb-1 pl-2 border-l border-neutral-200">
                         <SessionList
-                          sessions={sessions.slice(0, 8)}
+                          sessions={showAllFor.has(address) ? sessions : sessions.slice(0, 8)}
                           agentAddress={address}
                           activeSessionId={activeSessionId}
                           variant="sidebar"
                           onDelete={handleDeleteSession}
                           onSelect={onClose}
                         />
-                        {sessions.length > 8 && (
-                          <Link
-                            href={`/${address}`}
-                            onClick={onClose}
-                            className="block px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-700 transition-colors"
+                        {sessions.length > 8 && !showAllFor.has(address) && (
+                          <button
+                            onClick={() => setShowAllFor(prev => new Set(prev).add(address))}
+                            className="block w-full px-3 py-1.5 text-left text-xs text-neutral-400 hover:text-neutral-700 transition-colors"
                           >
-                            {sessions.length - 8} older chats →
-                          </Link>
+                            {sessions.length - 8} older chats
+                          </button>
                         )}
                       </div>
                     )}
@@ -343,27 +306,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             <HiOutlinePlus className="w-4 h-4" />
             Add Agent
           </Link>
-
-          {userProfile && (
-            <a
-              href="https://o.openonion.ai/purchase"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group block px-3 py-2.5 rounded-lg bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[10px] font-mono font-medium text-neutral-500 uppercase tracking-widest">Balance</span>
-                  <span className="text-sm font-semibold text-neutral-900 tabular-nums">
-                    ${userProfile.balance_usd.toFixed(2)}
-                  </span>
-                </div>
-                <span className="text-[11px] font-medium text-neutral-900 group-hover:text-neutral-600 transition-colors">
-                  Top up →
-                </span>
-              </div>
-            </a>
-          )}
 
           <Link
             href="/settings"
@@ -387,20 +329,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             const count = (sessionsByAgent[pendingRemove] || []).length
             return `${infoMap[pendingRemove]?.name || 'This agent'}${count > 0 ? ` and its ${count} chat${count > 1 ? 's' : ''}` : ''} will be removed. This cannot be undone.`
           })() : undefined}
-          onConfirm={async () => {
-            if (!pendingRemove || deleting) return
-            setDeleting(true)
-            try {
-              const sessionIds = (sessionsByAgent[pendingRemove] || []).map(s => s.sessionId)
-              await deleteServerSessions(sessionIds)
+          onConfirm={() => {
+            if (pendingRemove) {
               removeAgent(pendingRemove)
               if (activeAgent === pendingRemove) router.push('/')
-              setPendingRemove(null)
-            } catch (error) {
-              window.alert(error instanceof Error ? error.message : 'Session cleanup failed')
-            } finally {
-              setDeleting(false)
             }
+            setPendingRemove(null)
           }}
           onCancel={() => setPendingRemove(null)}
         />

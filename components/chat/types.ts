@@ -1,15 +1,50 @@
+/**
+ * @purpose TypeScript type definitions for oo-chat component library
+ * @llm-note
+ *   Dependencies: imports the normalized ChatItem contract from @connectonion/react | imported by chat components and use-agent-sdk.ts
+ *   Data flow: defines shared interfaces used across entire chat component library → no data transformation, pure type definitions
+ *   State/Effects: no state or side effects, pure type definitions
+ *   Integration: exposes presentation aliases and component props; raw wire DTOs stay in the SDK
+ *   Performance: compile-time only, zero runtime cost
+ *   Errors: no error handling, pure TypeScript types
+ *
+ * Type Categories:
+ *   Core Types:
+ *     - Message: Chat message data (user/assistant/system)
+ *     - UI: SDK-normalized messages and agent activity
+ *     - PendingAskUser: Interactive question awaiting user response
+ *
+ *   Wire protocol types deliberately do not live in the component layer.
+ *
+ *   Component Props:
+ *     - ChatProps: Main chat component props (messages, activities, ask_user)
+ *     - ChatMessageProps, ChatInputProps, etc.: Individual component interfaces
+ *
+ * File Relationships:
+ *     components/chat/
+ *     ├── types.ts                  # THIS FILE - shared type definitions
+ *     ├── use-chat.ts               # Uses Message type
+ *     ├── use-agent-sdk.ts          # Supplies normalized ChatItem[]
+ *     ├── chat.tsx                  # Uses ChatProps
+ *     ├── chat-message.tsx          # Uses ChatMessageProps, Message
+ *     ├── chat-messages.tsx         # Uses ChatMessagesProps, Message
+ *     ├── chat-input.tsx            # Uses ChatInputProps
+ *     ├── chat-empty-state.tsx      # Uses ChatEmptyStateProps
+ *     ├── chat-ask-user.tsx         # Uses PendingAskUser
+ *     └── index.ts                  # Re-exports all types
+ */
+
+import type {
+  ApprovalMode as SDKApprovalMode,
+  ChatItem,
+} from '@connectonion/react'
+
 export interface FileAttachment {
   name: string
   type: string
   size: number
   dataUrl: string
 }
-
-export type AskUserResponseHandler = (
-  answer: string | string[],
-  images?: string[],
-  files?: FileAttachment[],
-) => void
 
 export interface Message {
   id: string
@@ -18,61 +53,9 @@ export interface Message {
   createdAt?: Date
 }
 
-export type StreamEventType =
-  | 'user_input'
-  | 'thinking'
-  | 'llm_call'      // Backend sends this when LLM completes
-  | 'tool_call'     // Backend sends this BEFORE tool execution
-  | 'tool_result'   // Backend sends this AFTER tool execution
-  | 'assistant'
-  | 'error'
-  | 'complete'
-  | 'ask_user'
-
-export type WsMessageType = StreamEventType | 'OUTPUT' | 'ERROR' | 'INPUT'
-
-export interface AskUserEvent {
-  type: 'ask_user'
-  question: string
-  options?: string[]
-  disabled_options?: string[]
-  multi_select?: boolean
-}
-
-export interface StreamEvent {
-  type: WsMessageType
-  id?: string  // Tool call ID for matching tool_call with tool_result
-  content?: string
-  kind?: 'intent' | 'plan' | 'reflect'
-  name?: string
-  args?: Record<string, unknown>
-  status?: 'success' | 'error' | 'not_found'
-  result?: string
-  timing_ms?: number
-  error?: string
-  source?: string
-  message?: string
-  tools_used?: string[]
-  llm_calls?: number
-  iterations?: number
-  // ask_user fields
-  question?: string
-  options?: string[]
-  disabled_options?: string[]
-  multi_select?: boolean
-}
-
-export interface Activity {
-  id: string
-  type: StreamEventType  // Only streaming events, not protocol messages
-  data: StreamEvent
-  timestamp: Date
-}
-
 export interface PendingAskUser {
   question: string
   options: string[]
-  disabled_options: string[]
   multi_select: boolean
   input_type?: string
   fields?: AskUserField[]
@@ -109,161 +92,34 @@ export interface PendingPlanReview {
   plan_content: string
 }
 
-// UI types (matches ConnectOnion SDK: connectonion-ts/src/connect.ts)
-export type UIType = 'user' | 'agent' | 'thinking' | 'tool_call' | 'ask_user' | 'approval_needed' | 'onboard_required' | 'onboard_success' | 'intent' | 'eval' | 'compact' | 'tool_blocked' | 'ulw_turns_reached' | 'plan_review' | 'files_received'
+// UI types come from @connectonion/react's normalized ChatItem contract.
+export type UIType = ChatItem['type']
 
-/** Base UI with common fields */
-interface BaseUI {
-  id: string
-  type: UIType
-}
+export type UserUI = Extract<ChatItem, { type: 'user' }>
+export type AgentUI = Extract<ChatItem, { type: 'agent' }>
 
-/** User message */
-export interface UserUI extends BaseUI {
-  type: 'user'
-  content: string
-  images?: string[]
-  files?: FileAttachment[]
-}
+/** Thinking presentation item derived from the normalized SDK contract. */
+export type ThinkingUI = Extract<ChatItem, { type: 'thinking' }>
 
-/** Agent response */
-export interface AgentUI extends BaseUI {
-  type: 'agent'
-  content: string
-  images?: string[]
-}
+export type ToolCallUI = Extract<ChatItem, { type: 'tool_call' }>
+export type AskUserUI = Extract<ChatItem, { type: 'ask_user' }>
+export type ApprovalNeededUI = Extract<ChatItem, { type: 'approval_needed' }>
+export type OnboardRequiredUI = Extract<ChatItem, { type: 'onboard_required' }>
+export type OnboardSuccessUI = Extract<ChatItem, { type: 'onboard_success' }>
 
-/** Token usage info from LLM */
-export interface TokenUsage {
-  input_tokens?: number
-  output_tokens?: number
-  prompt_tokens?: number
-  completion_tokens?: number
-  total_tokens?: number
-  cost?: number
-}
-
-/** Thinking indicator */
-export interface ThinkingUI extends BaseUI {
-  type: 'thinking'
-  status: 'running' | 'done' | 'error'
-  content?: string
-  kind?: 'intent' | 'plan' | 'reflect'
-  model?: string
-  duration_ms?: number
-  context_percent?: number  // Context window usage percentage
-  usage?: TokenUsage
-}
-
-/** Tool execution (merged from tool_call + tool_result) */
-export interface ToolCallUI extends BaseUI {
-  type: 'tool_call'
-  name: string
-  args?: Record<string, unknown>
-  status: 'running' | 'done' | 'error'
-  result?: string
-  timing_ms?: number
-}
-
-/** Ask user */
-export interface AskUserUI extends BaseUI {
-  type: 'ask_user'
-  text: string
-  options?: string[]
-  disabled_options?: string[]
-  multi_select?: boolean
-  input_type?: string
-  fields?: AskUserField[]
-  answered?: boolean
-  answer?: string
-}
-
-/** Approval needed for dangerous tool */
-export interface ApprovalNeededUI extends BaseUI {
-  type: 'approval_needed'
-  tool: string
-  arguments: Record<string, unknown>
-  description?: string
-  batch_remaining?: Array<{ tool: string; arguments: string }>
-}
-
-/** Onboard required for stranger */
-export interface OnboardRequiredUI extends BaseUI {
-  type: 'onboard_required'
-  methods: string[]
-  paymentAmount?: number
-  paymentAddress?: string  // Agent's address for payment transfer
-}
-
-/** Onboard success */
-export interface OnboardSuccessUI extends BaseUI {
-  type: 'onboard_success'
-  level: string
-  message: string
-}
-
-/** Intent analysis (user feels seen) */
-export interface IntentUI extends BaseUI {
-  type: 'intent'
-  status: 'analyzing' | 'understood'
-  ack?: string  // Acknowledgment message e.g., "checking the files in this directory"
-  is_build?: boolean  // Whether this is a build/code task
-}
-
-/** Evaluation result from eval plugin (structured) */
-export interface EvalUI extends BaseUI {
-  type: 'eval'
-  status: 'evaluating' | 'done'
-  passed?: boolean     // True if task completed successfully
-  summary?: string     // Brief explanation (1-2 sentences)
-  expected?: string    // What should happen
-  eval_path?: string   // Path to eval file (.co/evals/...)
-}
-
-/** Auto-compact event from auto_compact plugin */
-export interface CompactUI extends BaseUI {
-  type: 'compact'
-  status: 'compacting' | 'done' | 'error'
-  context_before?: number  // Context % before compact
-  context_after?: number   // Context % after compact
-  context_percent?: number // Current context % (when compacting)
-  message?: string
-  error?: string
-}
-
-/** Tool blocked (e.g., bash file creation blocked by prefer_write_tool) */
-export interface ToolBlockedUI extends BaseUI {
-  type: 'tool_blocked'
-  tool: string      // Tool that was blocked
-  reason: string    // Why it was blocked (e.g., 'file_creation')
-  message: string   // Human-readable message
-  command?: string  // The blocked command
-}
-
-/** ULW turns reached checkpoint */
-export interface UlwTurnsReachedUI extends BaseUI {
-  type: 'ulw_turns_reached'
-  turns_used: number
-  max_turns: number
-}
-
-/** Plan review - agent sends plan for user approval */
-export interface PlanReviewUI extends BaseUI {
-  type: 'plan_review'
-  plan_content: string
-}
-
-/** Files received by the agent */
-export interface FilesReceivedUI extends BaseUI {
-  type: 'files_received'
-  files: Array<{ name: string; path: string }>
-}
+export type IntentUI = Extract<ChatItem, { type: 'intent' }>
+export type EvalUI = Extract<ChatItem, { type: 'eval' }>
+export type CompactUI = Extract<ChatItem, { type: 'compact' }>
+export type ToolBlockedUI = Extract<ChatItem, { type: 'tool_blocked' }>
+export type UlwTurnsReachedUI = Extract<ChatItem, { type: 'ulw_turns_reached' }>
+export type PlanReviewUI = Extract<ChatItem, { type: 'plan_review' }>
+export type FilesReceivedUI = Extract<ChatItem, { type: 'files_received' }>
 
 /** Union of all UI types */
-export type UI = UserUI | AgentUI | ThinkingUI | ToolCallUI | AskUserUI | ApprovalNeededUI | OnboardRequiredUI | OnboardSuccessUI | IntentUI | EvalUI | CompactUI | ToolBlockedUI | UlwTurnsReachedUI | PlanReviewUI | FilesReceivedUI
+export type UI = ChatItem
 
 /** Approval mode (matches ConnectOnion SDK) */
-export type ApprovalMode = 'safe' | 'plan' | 'accept_edits' | 'ulw'
+export type ApprovalMode = SDKApprovalMode
 
 export interface SkillInfo {
   name: string
@@ -277,15 +133,13 @@ export interface ChatProps {
   /** Gracefully stop the running agent (shown as a stop button while isLoading) */
   onStop?: () => void
   isLoading?: boolean
-  /** Stop was clicked and the old server turn is unwinding. */
-  isStopping?: boolean
   placeholder?: string
   className?: string
   emptyStateTitle?: string
   emptyStateDescription?: string
   suggestions?: string[]
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: AskUserResponseHandler
+  onAskUserResponse?: (answer: string | string[]) => void
   pendingApproval?: PendingApproval | null
   onApprovalResponse?: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
   pendingOnboard?: PendingOnboard | null
@@ -296,6 +150,8 @@ export interface ChatProps {
   onPlanReviewResponse?: (message: string) => void
   /** Custom status bar inside input (e.g., mode indicator) */
   statusBar?: React.ReactNode
+  /** False only when the agent has declared it takes neither images nor files. */
+  acceptsAttachments?: boolean
   /** ULW state for 3-state bottom panel */
   mode?: ApprovalMode
   ulwTurnsRemaining?: number | null
@@ -314,10 +170,6 @@ export interface ChatProps {
   onRetry?: () => void
   /** Dismiss the error banner without resending anything */
   onDismissError?: () => void
-  /** Whether messages exist (session was started) */
-  hasSession?: boolean
-  /** Called when user clicks the reconnect banner */
-  onReconnect?: () => void
   skills?: SkillInfo[]
 }
 
@@ -327,16 +179,22 @@ export interface ChatMessageProps {
 }
 
 export interface ChatInputProps {
+  /** The run is stopped on a question only the reader can answer. The composer
+   *  should say so instead of offering to interrupt work that is not happening. */
+  awaitingYou?: boolean
+  /** Bring the pending question back on screen — it scrolls away like any item. */
+  onJumpToPending?: () => void
   onSend: (message: string, images?: string[], files?: FileAttachment[]) => void
   /** Gracefully stop the running agent; when provided, the send button becomes a stop button while isLoading */
   onStop?: () => void
   isLoading?: boolean
-  isStopping?: boolean
   placeholder?: string
   className?: string
   /** Status bar below input (mode indicator + hints) */
   statusBar?: React.ReactNode
   skills?: SkillInfo[]
+  /** False only when the agent has declared it takes neither images nor files. */
+  acceptsAttachments?: boolean
 }
 
 export interface ChatMessagesProps {
@@ -346,7 +204,7 @@ export interface ChatMessagesProps {
   pendingApproval?: PendingApproval | null
   onApprovalResponse?: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: AskUserResponseHandler
+  onAskUserResponse?: (answer: string | string[]) => void
   pendingOnboard?: PendingOnboard | null
   onOnboardSubmit?: (options: { inviteCode?: string; payment?: number }) => void
   pendingUlwTurnsReached?: PendingUlwTurnsReached | null

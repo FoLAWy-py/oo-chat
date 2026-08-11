@@ -3,9 +3,9 @@
 // In-transcript card for ask_user tool calls: option buttons, free-text reply,
 // or QR sign-in modal. QR modal is closable (X/backdrop) and every pending
 // state offers ask-user-skip so the agent can proceed without an answer.
-import { useState, useEffect, useRef, type ChangeEvent } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import type { ToolCallUI, PendingAskUser, AskUserResponseHandler } from '../../types'
+import type { ToolCallUI, PendingAskUser } from '../../types'
 import {
   HiOutlineChevronRight,
   HiOutlineChevronDown,
@@ -19,13 +19,6 @@ import {
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { ASK_USER_SKIP_ANSWER, SkipButton } from '../../ask-user-skip'
-import {
-  askUserOptionLabel,
-  askUserOptionOpenUrl,
-  isAskUserOptionDisabled,
-  OOCHAT_OPENED_WINDOW_NAME,
-  runAskUserOptionSideEffect,
-} from '../../ask-user-options'
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -34,25 +27,8 @@ function cn(...inputs: ClassValue[]) {
 interface AskUserCardProps {
   toolCall: ToolCallUI
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: AskUserResponseHandler
+  onAskUserResponse?: (answer: string | string[]) => void
   qrImage?: string
-}
-
-const REPLACEMENT_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
-const MAX_REPLACEMENT_IMAGE_BYTES = 10 * 1024 * 1024
-const MAX_REPLACEMENT_TOTAL_BYTES = 80 * 1024 * 1024
-
-function isChangeImagesOption(option: string): boolean {
-  return /^(change images|\u66f4\u6362\u56fe\u7247)$/i.test(option.trim())
-}
-
-function readImageAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(reader.error || new Error(`Could not read ${file.name}`))
-    reader.readAsDataURL(file)
-  })
 }
 
 export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrImage }: AskUserCardProps) {
@@ -65,27 +41,20 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
   const [zoomed, setZoomed] = useState(false)
   const [qrDismissed, setQrDismissed] = useState(false)
   const [mounted, setMounted] = useState(false)
-  const [replacementOption, setReplacementOption] = useState('')
-  const [replacementError, setReplacementError] = useState('')
-  const [isUploadingReplacement, setIsUploadingReplacement] = useState(false)
-  const replacementInputRef = useRef<HTMLInputElement>(null)
+  // Deliberate: the server renders mounted=false and the client flips it after
+  // hydration, so browser-only UI below never renders into the server HTML and
+  // cannot cause a hydration mismatch. Setting it during render would defeat it.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), [])
 
   const question = (args?.question as string) || ''
   const isPending = !!pendingAskUser && !!onAskUserResponse && status === 'running' && !responded
   const options = pendingAskUser?.options
-  const disabledOptions = new Set(pendingAskUser?.disabled_options || [])
   const multiSelect = pendingAskUser?.multi_select
   const isQr = !!qrImage && !!(options && options.length) && /scan|qr|二维码|扫码/i.test(`${question} ${(options || []).join(' ')}`)
 
   const handleOptionClick = (option: string) => {
-    if (!isPending || isAskUserOptionDisabled(option, disabledOptions)) return
-    if (!multiSelect && isChangeImagesOption(option)) {
-      setReplacementOption(option)
-      setReplacementError('')
-      replacementInputRef.current?.click()
-      return
-    }
+    if (!isPending) return
     if (multiSelect) {
       setSelected(prev =>
         prev.includes(option)
@@ -93,50 +62,16 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
           : [...prev, option]
       )
     } else {
-      runAskUserOptionSideEffect(option)
       setResponded(true)
       onAskUserResponse!(option)
     }
   }
 
-  const handleReplacementImages = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files || [])
-    event.target.value = ''
-    if (!selectedFiles.length || !replacementOption || !isPending) return
-    const maximumImages = /linkedin/i.test(question) ? 20 : 9
-    if (selectedFiles.length > maximumImages) {
-      setReplacementError(`Select no more than ${maximumImages} images.`)
-      return
-    }
-    const invalid = selectedFiles.find(file =>
-      !REPLACEMENT_IMAGE_TYPES.has(file.type) || file.size === 0 || file.size > MAX_REPLACEMENT_IMAGE_BYTES
-    )
-    if (invalid) {
-      setReplacementError('Use PNG, JPEG, or WebP images up to 10 MB each.')
-      return
-    }
-    if (selectedFiles.reduce((total, file) => total + file.size, 0) > MAX_REPLACEMENT_TOTAL_BYTES) {
-      setReplacementError('The selected images must be 80 MB or less in total.')
-      return
-    }
-    setIsUploadingReplacement(true)
-    setReplacementError('')
-    try {
-      const images = await Promise.all(selectedFiles.map(readImageAsDataUrl))
-      setResponded(true)
-      onAskUserResponse!(replacementOption, images)
-    } catch {
-      setReplacementError('The selected images could not be read. Please choose them again.')
-    } finally {
-      setIsUploadingReplacement(false)
-    }
-  }
-
   const handleSubmit = (customValue?: string) => {
     if (!isPending) return
-
+    
     const valueToSubmit = customValue || textInput.trim()
-
+    
     if (multiSelect && selected.length > 0 && !customValue) {
       setResponded(true)
       onAskUserResponse!(selected)
@@ -164,15 +99,6 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
 
   return (
     <div className="py-2">
-      <input
-        ref={replacementInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        multiple
-        onChange={handleReplacementImages}
-        className="hidden"
-        aria-label="Select replacement images"
-      />
       {/* Header */}
       <div
         className="flex items-center gap-2 cursor-pointer group"
@@ -186,12 +112,12 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
           )}
 
           {status === 'done' ? (
-            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100/50">
-              <HiOutlineCheck className="w-2.5 h-2.5 text-green-600" />
+            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-brand-100/50">
+              <HiOutlineCheck className="w-2.5 h-2.5 text-brand-600" />
             </div>
           ) : responded ? (
-            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-green-50">
-              <HiOutlineCheck className="w-2.5 h-2.5 text-green-500 animate-pulse" />
+            <div className="flex items-center justify-center w-4 h-4 rounded-full bg-brand-50">
+              <HiOutlineCheck className="w-2.5 h-2.5 text-brand-500 animate-pulse" />
             </div>
           ) : isPending ? (
             <div className="w-2 h-2 rounded-full bg-neutral-500 animate-pulse ml-1" />
@@ -205,20 +131,20 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
 
         <div className="flex items-center gap-2">
           {status === 'done' ? (
-            <span className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest">Completed</span>
+            <span className="text-neutral-400 text-[11px] uppercase font-bold tracking-wide">Completed</span>
           ) : skipped ? (
-            <span className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest">Skipped</span>
+            <span className="text-neutral-400 text-[11px] uppercase font-bold tracking-wide">Skipped</span>
           ) : responded ? (
-            <span className="text-green-600 text-[10px] uppercase font-bold tracking-widest">Responded</span>
+            <span className="text-brand-600 text-[11px] uppercase font-bold tracking-wide">Responded</span>
           ) : isAwaiting ? (
-            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest animate-pulse">Pending</span>
+            <span className="text-neutral-500 text-[11px] uppercase font-bold tracking-wide animate-pulse">Pending</span>
           ) : null}
         </div>
       </div>
 
       {/* Content */}
       {isExpanded && (
-        <div className="mt-3 ml-5 space-y-4">
+        <div className="mt-3 ml-[60px] space-y-4">
           {/* Question */}
           <div className="text-[15px] text-neutral-800 whitespace-pre-wrap leading-relaxed">
             {question}
@@ -231,6 +157,10 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                 mounted ? createPortal(
                   zoomed ? (
                     <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 cursor-zoom-out animate-in fade-in duration-200" onClick={() => setZoomed(false)}>
+                      {/* Attachments arrive as base64 data: URLs in the event stream. next/image
+                          cannot optimise those — it needs a routable URL or a static import — so
+                          plain <img> is correct here, not a shortcut. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       {qrImage && <img src={qrImage} alt="QR code" className="max-w-full max-h-full object-contain" />}
                     </div>
                   ) : (
@@ -249,6 +179,10 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                         <HiOutlineX className="w-4 h-4" />
                       </button>
                       <h3 className="text-lg font-bold text-neutral-900 tracking-tight">Scan to sign in</h3>
+                      {/* Attachments arrive as base64 data: URLs in the event stream. next/image
+                          cannot optimise those — it needs a routable URL or a static import — so
+                          plain <img> is correct here, not a shortcut. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       {qrImage && <img src={qrImage} alt="QR code" onClick={() => setZoomed(true)} className="w-full rounded-xl border border-neutral-200 cursor-zoom-in" />}
                       <p className="text-[11px] text-neutral-400">Click to enlarge</p>
                       {question && <p className="text-xs text-neutral-500 leading-relaxed">{question}</p>}
@@ -257,11 +191,9 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                           <button
                             key={idx}
                             onClick={() => handleOptionClick(option)}
-                            disabled={isAskUserOptionDisabled(option, disabledOptions)}
-                            aria-disabled={isAskUserOptionDisabled(option, disabledOptions)}
-                            className="w-full bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-bold py-2.5 rounded-xl transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-400"
+                            className="w-full bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-bold py-2.5 rounded-xl transition-all active:scale-[0.99]"
                           >
-                            {askUserOptionLabel(option)}
+                            {option}
                           </button>
                         ))}
                         <SkipButton onSkip={handleSkip} />
@@ -286,22 +218,19 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                 <div className="grid grid-cols-1 gap-1.5">
                   {options.map((option, idx) => {
                     const isSelected = selected.includes(option)
-                    const isDisabled = isAskUserOptionDisabled(option, disabledOptions)
-                    const openUrl = askUserOptionOpenUrl(option)
-                    const optionClassName = cn(
-                      "w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl transition-all duration-200 border group/item",
-                      isDisabled
-                        ? "cursor-not-allowed bg-neutral-50 text-neutral-400 border-neutral-100 opacity-70"
-                        : isSelected
-                        ? "bg-neutral-100 text-neutral-900 border-neutral-400 shadow-sm"
-                        : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50"
-                    )
-                    const optionContent = (
-                      <>
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => handleOptionClick(option)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl transition-all duration-200 border group/item",
+                          isSelected
+                            ? "bg-neutral-100 text-neutral-900 border-neutral-400 shadow-sm"
+                            : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50"
+                        )}
+                      >
                         <div className="shrink-0">
-                          {isDisabled ? (
-                            <div className="w-5 h-5 rounded-full border-2 border-neutral-200 bg-neutral-100" />
-                          ) : multiSelect ? (
+                          {multiSelect ? (
                             isSelected ? (
                               <HiOutlineCheckCircle className="w-5 h-5 text-neutral-900" />
                             ) : (
@@ -315,29 +244,8 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                           "text-sm",
                           isSelected ? "font-semibold" : "font-medium text-neutral-600"
                         )}>
-                          {askUserOptionLabel(option)}
+                          {option}
                         </span>
-                      </>
-                    )
-                    return openUrl && !isDisabled && !isUploadingReplacement ? (
-                      <a
-                        key={idx}
-                        href={openUrl}
-                        target={OOCHAT_OPENED_WINDOW_NAME}
-                        onClick={() => handleOptionClick(option)}
-                        className={optionClassName}
-                      >
-                        {optionContent}
-                      </a>
-                    ) : (
-                      <button
-                        key={idx}
-                        onClick={() => handleOptionClick(option)}
-                        disabled={isDisabled || isUploadingReplacement}
-                        aria-disabled={isDisabled || isUploadingReplacement}
-                        className={optionClassName}
-                      >
-                        {optionContent}
                       </button>
                     )
                   })}
@@ -356,27 +264,16 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
                 </div>
               )}
 
-              {replacementError && (
-                <p role="alert" className="px-1 text-xs font-medium text-red-600">
-                  {replacementError}
-                </p>
-              )}
-              {isUploadingReplacement && (
-                <p role="status" className="px-1 text-xs font-medium text-neutral-500">
-                  Uploading replacement images…
-                </p>
-              )}
-
               {/* Input Fallback (always show or show if no options) */}
               <div className="space-y-2">
                 {options && (
                   <div className="flex items-center gap-2 px-1">
                     <div className="h-px flex-1 bg-neutral-100" />
-                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Or provide custom answer</span>
+                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wide">Or provide custom answer</span>
                     <div className="h-px flex-1 bg-neutral-100" />
                   </div>
                 )}
-
+                
                 <div className="flex gap-2 bg-white p-1.5 rounded-xl border border-neutral-200 shadow-sm focus-within:border-neutral-400 focus-within:ring-4 focus-within:ring-neutral-500/5 transition-all">
                   <input
                     type="text"
@@ -406,7 +303,7 @@ export function AskUserCard({ toolCall, pendingAskUser, onAskUserResponse, qrIma
           {/* Answer */}
           {(status === 'done' || responded) && result && (
             <div className="flex items-start gap-2 text-sm text-neutral-600 animate-in fade-in duration-300">
-              <HiOutlineCheck className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <HiOutlineCheck className="w-4 h-4 text-brand-600 shrink-0 mt-0.5" />
               <span className="whitespace-pre-wrap leading-relaxed">{result}</span>
             </div>
           )}

@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { ToolStatus } from './tool-status'
 import { HiOutlineClipboardList, HiOutlineCheck, HiOutlineClipboard, HiOutlineHeart, HiHeart, HiOutlineExclamationCircle, HiOutlineArrowsExpand } from 'react-icons/hi'
 import { Modal } from '@/components/ui/modal'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
@@ -131,18 +132,25 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
   const sections = parseSections(content)
 
   // Markdown code block renderer with syntax highlighting
-  const components: Components = {
-    code({ className, children }) {
+  const components = {
+    code({ inline, className, children, ...props }:
+      React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) {
       const match = /language-(\w+)/.exec(className || '')
       const codeString = String(children).replace(/\n$/, '')
 
-      if (match) {
+      // Keep the code element's own `style` out of the highlighter: it spreads
+      // after style={oneDark} and would replace the whole syntax theme with one
+      // inline declaration.
+      const { style: _codeStyle, ...highlighterProps } = props
+
+      if (!inline && match) {
         return (
           <SyntaxHighlighter
             style={oneDark}
             language={match[1]}
             PreTag="div"
             className="rounded-lg text-sm !my-3"
+            {...highlighterProps}
           >
             {codeString}
           </SyntaxHighlighter>
@@ -150,7 +158,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
       }
 
       return (
-        <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-800 text-sm">
+        <code className="bg-neutral-200 px-1.5 py-0.5 rounded text-neutral-800 text-sm" {...props}>
           {children}
         </code>
       )
@@ -218,7 +226,6 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
 
   // Status indicator
   const statusBg = status === 'done' ? 'bg-neutral-200 text-neutral-700' : status === 'error' ? 'bg-red-500/10 text-red-600' : 'bg-neutral-100 text-neutral-500'
-  const statusIcon = status === 'done' ? '✓' : status === 'error' ? '✗' : '●'
 
   return (
     <div className="py-2.5">
@@ -229,7 +236,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
           className="flex items-center gap-2 hover:bg-neutral-100 rounded px-1 -ml-1 transition-colors"
         >
           <span className={`flex items-center justify-center w-5 h-5 rounded-full ${statusBg}`}>
-            <span className="text-xs font-bold">{statusIcon}</span>
+            <ToolStatus status={status} />
           </span>
           <HiOutlineClipboardList className="w-4 h-4 text-neutral-500" />
           <span className="font-semibold text-sm">Implementation Plan</span>
@@ -258,7 +265,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
       </div>
 
       {/* Plan Preview */}
-      <div className="ml-5 mt-2 relative group/card">
+      <div className="ml-[60px] mt-2 relative group/card">
         <div
           onClick={() => setIsFullscreen(true)}
           className="cursor-pointer rounded-lg border border-neutral-200 bg-neutral-50 overflow-hidden hover:border-neutral-300 transition-colors"
@@ -361,7 +368,11 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
                   </div>
 
                   {/* Three Action Buttons - Top Right (Always Visible) */}
-                  <div className="absolute top-4 right-4 flex gap-2">
+                  {/* In flow on a phone, pinned to the corner from sm up. Absolute
+                      positioning put ~300px of buttons in a 343px-wide modal, where
+                      they overlapped the plan text and spilled past the rounded edge —
+                      approving or rejecting a plan was unusable on mobile. */}
+                  <div className="flex flex-wrap gap-2 px-6 pt-4 sm:absolute sm:top-4 sm:right-4 sm:px-0 sm:pt-0">
                     <button
                       onClick={() => handleReaction(section.id, 'like')}
                       className={`px-4 py-2.5 rounded-lg font-semibold text-sm transition-colors border ${
@@ -411,7 +422,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
                   </div>
 
                   {/* Section Content */}
-                  <div className="p-6 pr-40">
+                  <div className="p-6 sm:pr-40">
                     <div className={`${SECTION_PROSE}`}>
                       <ReactMarkdown components={components}>
                         {section.content}
@@ -439,14 +450,14 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
                         <div className="flex items-start gap-3">
                           <HiOutlineExclamationCircle className="w-6 h-6 text-neutral-200 shrink-0 mt-1" />
                           <div className="flex-1">
-                            <p className="text-base text-neutral-100 font-semibold mb-1">Don’t do this way</p>
+                            <p className="text-base text-neutral-100 font-semibold mb-1">Don&apos;t do this way</p>
                             <p className="text-sm text-neutral-400">Share what needs to change:</p>
                           </div>
                         </div>
                         <textarea
                           value={reaction.comment || ''}
                           onChange={(e) => handleCommentChange(section.id, e.target.value)}
-                          placeholder="Explain what’s wrong and how to improve it..."
+                          placeholder="Explain what's wrong and how to improve it..."
                           className="w-full bg-neutral-800 border border-neutral-700 text-neutral-100 text-base rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-neutral-500 placeholder:text-neutral-500 resize-none leading-relaxed"
                           rows={4}
                           autoFocus
@@ -476,7 +487,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
                     {Object.values(reactions).filter(r => r.type === 'dislike').length !== 1 ? 's' : ''} need changes
                   </p>
                   <p className="text-sm text-neutral-400 leading-relaxed">
-                    Your feedback will be sent when you click “Request Changes” below. I’ll revise the plan based on your suggestions.
+                    Your feedback will be sent when you click &quot;Request Changes&quot; below. I&apos;ll revise the plan based on your suggestions.
                   </p>
                 </div>
               </div>
@@ -505,7 +516,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
                     All sections look good
                   </p>
                   <p className="text-sm text-neutral-400 leading-relaxed">
-                    No feedback needed. All sections are approved by default. Click “Approve” below to proceed.
+                    No feedback needed. All sections are approved by default. Click &quot;Approve&quot; below to proceed.
                   </p>
                 </div>
               </div>
@@ -516,7 +527,7 @@ export function PlanCard({ toolCall, pendingPlanReview, onPlanReviewResponse }: 
 
       {/* Approve / Reject Buttons */}
       {!!pendingPlanReview && status === 'running' && !approvalSent && (
-        <div className="mt-4 ml-5 flex items-center gap-3">
+        <div className="mt-4 ml-[60px] flex items-center gap-3">
           <button
             onClick={handleApprove}
             className="px-4 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 text-white text-sm font-semibold transition-colors"

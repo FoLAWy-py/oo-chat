@@ -4,10 +4,10 @@
 // on tab focus. All field mapping (relay profile, direct /info merge, online
 // detection) lives in the SDK — this file must not duplicate it.
 import { useState, useEffect, useCallback } from 'react'
-import { fetchAgentInfo } from 'connectonion/react'
-import type { AgentInfo } from 'connectonion/react'
+import { fetchAgentInfo } from '@connectonion/react'
+import type { AgentInfo } from '@connectonion/react'
 
-export type { AgentInfo, SkillInfo, AgentAcceptedInputs } from 'connectonion/react'
+export type { AgentInfo, SkillInfo, AgentAcceptedInputs } from '@connectonion/react'
 
 const POLL_INTERVAL = 600000 // 10 minutes — info is cache-first + refetched on tab focus/mount; this is just a slow background revalidate for liveness/profile changes, not a tight poll
 
@@ -21,20 +21,14 @@ const POLL_INTERVAL = 600000 // 10 minutes — info is cache-first + refetched o
 // storeCache, which solves the same survive-remount problem for sessions.
 const infoCache: Record<string, AgentInfo> = {}
 
-async function fetchInfo(address: string): Promise<AgentInfo> {
-  const deployed = await fetch('/api/deployment', { cache: 'no-store' })
-    .then(async response => response.ok ? response.json() as Promise<AgentInfo> : null)
-    .catch(() => null)
-
-  if (deployed?.address === address) return deployed
-  return fetchAgentInfo(address)
-}
-
 /**
  * Hook to fetch info for multiple agent addresses.
  * Returns a map of address → AgentInfo.
  * Agents render immediately — info loads in background without blocking UI.
- * Polls every 30 seconds to keep status fresh.
+ * Cache-first: refetched on mount and whenever the tab regains focus, plus a slow
+ * background revalidate every 10 minutes. The focus refetch is what keeps status
+ * fresh for someone actually looking at the page; the interval only catches an
+ * agent going offline while the tab stays open and untouched.
  */
 export function useAgentInfo(addresses: string[]): Record<string, AgentInfo> {
   // Seed from the module cache so a remount renders last-known status instantly
@@ -54,7 +48,7 @@ export function useAgentInfo(addresses: string[]): Record<string, AgentInfo> {
     if (addresses.length === 0) return
 
     for (const addr of addresses) {
-      fetchInfo(addr).then(info => {
+      fetchAgentInfo(addr).then(info => {
         infoCache[addr] = info // authoritative result — persist across remounts
         setInfoMap(prev => {
           const existing = prev[addr]
@@ -108,3 +102,16 @@ export function agentInitial(label: string, address: string): string {
   const alpha = address.slice(2).match(/[a-f]/i)
   return (alpha ? alpha[0] : address.slice(2, 3)).toUpperCase()
 }
+
+/** An agent address is `0x` followed by 64 hex characters — a public key.
+ *
+ *  One definition because there were two: the root picker checked this and
+ *  Settings did not, so the same paste was refused in one place and became a
+ *  permanent agent in the other. A paste that clipped the last few characters
+ *  looks exactly like one that did not, which is the case this catches. */
+export function isAgentAddress(value: string) {
+  return /^0x[0-9a-fA-F]{64}$/.test(value)
+}
+
+/** Shown when it is not. Shared so both surfaces refuse in the same words. */
+export const ADDRESS_ERROR = 'Enter a valid agent address (0x + 64 hex characters)'

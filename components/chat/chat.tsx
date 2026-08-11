@@ -9,6 +9,7 @@ import { StatusBar } from './messages'
 import { UlwSetupPanel } from './ulw-setup-panel'
 import { UlwMonitorPanel } from './ulw-monitor-panel'
 import { UlwFullscreen } from './ulw-fullscreen'
+import { bestOffers, UNIVERSAL_OPENER } from './skill-offers'
 import type { ChatProps, ThinkingUI, UserUI } from './types'
 
 export function Chat({
@@ -16,7 +17,6 @@ export function Chat({
   onSend,
   onStop,
   isLoading = false,
-  isStopping = false,
   placeholder = 'Send a message...',
   pendingAskUser,
   onAskUserResponse,
@@ -44,11 +44,16 @@ export function Chat({
   connectionError,
   onRetry,
   onDismissError,
-  hasSession,
-  onReconnect,
   skills,
+  acceptsAttachments,
   agentName,
 }: ChatProps & { agentName?: string }) {
+  const offers = useMemo(() => bestOffers(skills ?? []), [skills])
+  // The ULW checkpoint counts too: an autonomous run has stopped and is asking
+  // for more rope, which is the most consequential thing the composer can be
+  // waiting on. Without it the placeholder still read "Send a message…" while
+  // the run was parked.
+  const awaitingYou = Boolean(pendingApproval || pendingAskUser || pendingUlwTurnsReached)
   const isUlwActive = mode === 'ulw'
   const [ulwFullscreen, setUlwFullscreen] = useState(false)
 
@@ -69,13 +74,7 @@ export function Chat({
   // Handle send - if there's a pending ask_user, respond to it; otherwise send normally
   const handleSend = useCallback((content: string, images?: string[], files?: import('./types').FileAttachment[]) => {
     if (pendingAskUser && onAskUserResponse) {
-      const replacementOption = pendingAskUser.options.find(option =>
-        /^(change images|更换图片)$/i.test(option.trim())
-      )
-      const answer = replacementOption && (images?.length || files?.length)
-        ? replacementOption
-        : content
-      onAskUserResponse(answer, images, files)
+      onAskUserResponse(content)
     } else {
       onSend(content, images, files)
     }
@@ -122,13 +121,29 @@ export function Chat({
         onSend={handleSend}
         onStop={onStop}
         isLoading={isLoading}
-        isStopping={isStopping}
         placeholder={inputPlaceholder}
         statusBar={statusBar}
         skills={skills}
+        acceptsAttachments={acceptsAttachments}
+        // The composer is the one part of the page a reader always looks at, so it
+        // is where "it is your move" has to be said. Everything else — the spinner,
+        // the token counter, the status chip on the card — was either lying or
+        // off-screen while the run sat blocked (#59).
+        awaitingYou={awaitingYou}
+        onJumpToPending={jumpToPending}
       />
     )
   }
+
+  // The pending card is an ordinary transcript item and scrolls away like one.
+  // Rather than thread a ref through ChatMessages, find it by the id the renderer
+  // already puts on every item.
+  const jumpToPending = useCallback(() => {
+    const id = pendingApproval?.tool ?? pendingAskUser?.question
+    if (!id) return
+    document.querySelector('[data-pending-decision]')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [pendingApproval, pendingAskUser])
 
   const isEmpty = ui.length === 0
 
@@ -153,6 +168,36 @@ export function Chat({
                 ? 'Connected — send a message'
                 : 'Send a message to start'}
             </p>
+
+            {/* The same three openers the landing page offers. This screen is what
+                every visitor sees after passing a gate, and it used to ask them to
+                think of something themselves in the first five seconds. Same chip
+                markup as the landing page so there is one definition of a chip. */}
+            <div
+              className="reveal mt-6 flex flex-wrap justify-center gap-2 px-6"
+              style={{ '--reveal-delay': '200ms' } as React.CSSProperties}
+            >
+              {/* The universal opener leads, filled — same as the landing page.
+                  Outside the offers.length guard on purpose: an agent that
+                  publishes no usable skill chips is exactly the one whose reader
+                  has nothing to go on, and this row used to disappear entirely
+                  for them. */}
+              <button
+                onClick={() => onSend(UNIVERSAL_OPENER)}
+                className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-neutral-800"
+              >
+                {UNIVERSAL_OPENER}
+              </button>
+              {offers.map(({ skill, offer }) => (
+                  <button
+                    key={skill.name}
+                    onClick={() => onSend('/' + skill.name)}
+                    className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm text-neutral-700 shadow-xs transition-all hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-sm active:translate-y-0"
+                  >
+                    {offer}
+                  </button>
+              ))}
+            </div>
           </div>
         </div>
       ) : (

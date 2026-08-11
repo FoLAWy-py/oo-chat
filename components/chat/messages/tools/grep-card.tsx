@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import type { ToolCallUI, PendingApproval } from '../../types'
 import { HiOutlineChevronRight, HiOutlineChevronDown } from 'react-icons/hi'
+import { ToolStatus } from './tool-status'
 import { ApprovalButtons } from './approval-buttons'
 
 interface GrepCardProps {
@@ -72,13 +73,6 @@ function highlightPath(path: string): React.ReactNode {
   )
 }
 
-function getPreviewLines(result: string, maxLines = 5): { lines: string[]; remaining: number } {
-  const allLines = result.split('\n').filter(l => l.trim())
-  const lines = allLines.slice(0, maxLines)
-  const remaining = allLines.length - maxLines
-  return { lines, remaining: Math.max(0, remaining) }
-}
-
 export function GrepCard({ toolCall, pendingApproval, onApprovalResponse }: GrepCardProps) {
   const { name, args, status, result, timing_ms } = toolCall
   const [isExpanded, setIsExpanded] = useState(false)
@@ -101,10 +95,6 @@ export function GrepCard({ toolCall, pendingApproval, onApprovalResponse }: Grep
   const hasOutput = result && result.length > 0
   const allLines = hasOutput ? result.split('\n').filter(l => l.trim()) : []
   const fileCount = allLines.length
-  const { lines: previewLines, remaining } = hasOutput
-    ? getPreviewLines(result)
-    : { lines: [], remaining: 0 }
-
   // Format header: grep(path, pattern)
   const headerArgs = [path, pattern].filter(Boolean).join(', ')
 
@@ -115,40 +105,45 @@ export function GrepCard({ toolCall, pendingApproval, onApprovalResponse }: Grep
         className="flex items-center gap-2 cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
       >
+        {/* Same 60px rail. grep carries a chevron and a status but no tool
+            icon, so that slot stays empty instead of pulling the name left. */}
+        <div className="flex w-[60px] shrink-0 items-center gap-1.5">
         {/* Expand icon */}
-        {isExpanded ? (
-          <HiOutlineChevronDown className="w-3.5 h-3.5 text-neutral-400" />
-        ) : (
-          <HiOutlineChevronRight className="w-3.5 h-3.5 text-neutral-400" />
-        )}
+          {isExpanded ? (
+            <HiOutlineChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+          ) : (
+            <HiOutlineChevronRight className="w-3.5 h-3.5 text-neutral-400" />
+          )}
 
-        {/* Status */}
-        {status === 'done' && <span className="text-green-600">✓</span>}
-        {status === 'error' && <span className="text-red-500">✗</span>}
-        {status === 'running' && needsApproval && (approvalSent === 'skipped' || approvalSent === 'stopped') && <span className="text-red-500">✗</span>}
-        {status === 'running' && needsApproval && approvalSent && approvalSent !== 'skipped' && approvalSent !== 'stopped' && <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />}
-        {status === 'running' && needsApproval && !approvalSent && <span className="w-2 h-2 rounded-full bg-neutral-500 animate-pulse" />}
-        {status === 'running' && !needsApproval && <span className="w-2 h-2 rounded-full bg-neutral-900 animate-pulse" />}
+          {/* Status */}
+          <ToolStatus status={status} awaitingApproval={needsApproval && !approvalSent} />
+          <span className="w-4 shrink-0" aria-hidden="true" />
+        </div>
 
         {/* Tool name with args */}
-        <span className="text-sm font-mono">
-          <span className="font-medium text-neutral-700">{name}</span>
+        {/* Truncate rather than wrap: a long pattern turned the header into two
+            lines while every other tool row stayed on one. */}
+        <span className="min-w-0 truncate text-[13px] font-mono">
+          <span className="font-medium text-neutral-800">{name}</span>
           {headerArgs && <span className="text-neutral-500">({headerArgs})</span>}
         </span>
 
         {/* Status text */}
         {status === 'done' || status === 'error' ? (
-          <>
-            {timing_ms && <span className="text-neutral-400 text-xs">{formatTime(timing_ms)}</span>}
-            {fileCount > 0 && !isExpanded && <span className="text-neutral-400 text-xs">{fileCount} files</span>}
-          </>
+          // One span, not two: as separate children they wrapped onto their own
+          // lines on a phone and made this row visibly taller than its neighbours.
+          <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] tabular-nums text-neutral-500">
+            {[timing_ms ? formatTime(timing_ms) : '', fileCount > 0 && !isExpanded ? `${fileCount} files` : '']
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
         ) : needsApproval && approvalSent ? (
           approvalSent === 'skipped' ? (
-            <span className="text-neutral-400 text-xs font-medium">skipped</span>
+            <span className="ml-auto shrink-0 text-[11px] text-neutral-500">skipped</span>
           ) : approvalSent === 'stopped' ? (
-            <span className="text-red-500 text-xs font-medium">stopped</span>
+            <span className="ml-auto shrink-0 text-[11px] font-medium text-red-600">stopped</span>
           ) : (
-            <span className="text-green-600 text-xs font-medium">approved — running...</span>
+            <span className="text-brand-600 text-xs font-medium">approved — running...</span>
           )
         ) : needsApproval ? (
           <span className="text-neutral-500 text-xs font-medium">awaiting approval</span>
@@ -157,9 +152,12 @@ export function GrepCard({ toolCall, pendingApproval, onApprovalResponse }: Grep
         )}
       </div>
 
-      {/* Terminal block - Monokai background */}
-      {hasOutput && (
-        <div className="mt-2 ml-5 bg-[#272822] rounded-lg overflow-hidden">
+      {/* Terminal block — behind the chevron, like every other body. It used to
+          render whenever there was output, so a row showing ▸ still displayed a
+          preview and the chevron stopped meaning anything. The collapsed summary
+          it was duplicating already lives in the header meta ("0.1s · 3 files"). */}
+      {isExpanded && hasOutput && (
+        <div className="mt-2 ml-[60px] bg-[#272822] rounded-lg overflow-hidden">
           <div
             className="cursor-pointer"
             onClick={() => setIsExpanded(!isExpanded)}
@@ -167,14 +165,11 @@ export function GrepCard({ toolCall, pendingApproval, onApprovalResponse }: Grep
             <div className="p-3 text-xs font-mono max-h-80 overflow-y-auto">
               {/* File list with left border */}
               <div className="border-l-2 border-[#3E3D32] pl-3 space-y-0.5">
-                {(isExpanded ? allLines : previewLines).map((line, i) => (
+                {allLines.map((line, i) => (
                   <div key={i} className="leading-5 truncate hover:bg-[#3E3D32]/50 -ml-3 pl-3 -mr-3 pr-3">
                     {highlightPath(line)}
                   </div>
                 ))}
-                {!isExpanded && remaining > 0 && (
-                  <div className="text-[#75715E] pt-1">+{remaining} more files</div>
-                )}
               </div>
             </div>
           </div>
@@ -184,14 +179,14 @@ export function GrepCard({ toolCall, pendingApproval, onApprovalResponse }: Grep
 
       {/* Approval - separate from terminal block */}
       {needsApproval && status === 'running' && (
-        <div className="mt-2 ml-5">
+        <div className="mt-2 ml-[60px]">
           <ApprovalButtons approvalSent={approvalSent} onApproval={handleApproval} toolName="Grep" description={pendingApproval?.description} batchRemaining={pendingApproval?.batch_remaining} />
         </div>
       )}
 
       {/* No output state */}
       {!hasOutput && status === 'done' && (
-        <div className="mt-2 ml-5 bg-[#272822] rounded-lg p-3">
+        <div className="mt-2 ml-[60px] bg-[#272822] rounded-lg p-3">
           <span className="text-[#75715E] text-xs font-mono">(no matches found)</span>
         </div>
       )}

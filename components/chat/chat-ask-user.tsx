@@ -4,7 +4,7 @@
 // the chat input area when the agent is waiting). Same skip semantics as the
 // cards via ask-user-skip.
 
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useState } from 'react'
 import {
   HiOutlineCheckCircle,
   HiOutlineCheck,
@@ -13,59 +13,33 @@ import {
 } from 'react-icons/hi'
 import { cn } from './utils'
 import { ASK_USER_SKIP_ANSWER, SkipButton } from './ask-user-skip'
-import {
-  askUserOptionLabel,
-  askUserOptionOpenUrl,
-  isAskUserOptionDisabled,
-  OOCHAT_OPENED_WINDOW_NAME,
-  runAskUserOptionSideEffect,
-} from './ask-user-options'
-import type { PendingAskUser, AskUserResponseHandler } from './types'
+import type { PendingAskUser } from './types'
 
 interface ChatAskUserProps {
   askUser: PendingAskUser
-  onResponse: AskUserResponseHandler
+  onResponse: (answer: string | string[]) => void
   className?: string
-}
-
-const REPLACEMENT_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
-const MAX_REPLACEMENT_IMAGE_BYTES = 10 * 1024 * 1024
-const MAX_REPLACEMENT_TOTAL_BYTES = 80 * 1024 * 1024
-
-function isChangeImagesOption(option: string): boolean {
-  return /^(change images|\u66f4\u6362\u56fe\u7247)$/i.test(option.trim())
-}
-
-function readImageAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(reader.error || new Error(`Could not read ${file.name}`))
-    reader.readAsDataURL(file)
-  })
 }
 
 export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps) {
   const { multi_select, input_type, fields } = askUser
   const question = typeof askUser.question === 'string' ? askUser.question : ''
   const options = Array.isArray(askUser.options) ? askUser.options : []
-  const disabledOptions = new Set(
-    Array.isArray(askUser.disabled_options) ? askUser.disabled_options : []
-  )
   const [selected, setSelected] = useState<string[]>([])
   const [textInput, setTextInput] = useState('')
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
-  const [replacementOption, setReplacementOption] = useState('')
-  const [replacementError, setReplacementError] = useState('')
-  const [isUploadingReplacement, setIsUploadingReplacement] = useState(false)
-  const replacementInputRef = useRef<HTMLInputElement>(null)
   const hasOptions = options.length > 0
-  const isCredentialPrompt = input_type === 'credentials'
+  // input_type is the real signal; the phrase match is the fallback for agents that
+  // ask in prose without setting it. It only ever matched Chinese phrasing, so an
+  // agent asking "your username and password" in English got a plain text box
+  // instead of a credential form — no password masking, no autocomplete.
+  const asksForCredentials = /账号[和或]密码|user\s?name and password|username and password|用户名[和或]密码/i
+  const isCredentialPrompt = input_type === 'credentials' || asksForCredentials.test(question)
   const formFields = fields && fields.length > 0
     ? fields
     : isCredentialPrompt
       ? [
-          { name: 'username', label: 'Email or username', type: 'text' as const, required: true, autocomplete: 'username' },
+          { name: 'username', label: 'Username', type: 'text' as const, required: true, autocomplete: 'username' },
           { name: 'password', label: 'Password', type: 'password' as const, required: true, autocomplete: 'current-password' },
         ]
       : []
@@ -73,13 +47,6 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
   const hasMissingRequiredField = formFields.some(field => field.required && !fieldValues[field.name]?.trim())
 
   const handleOptionClick = (option: string) => {
-    if (isAskUserOptionDisabled(option, disabledOptions)) return
-    if (!multi_select && isChangeImagesOption(option)) {
-      setReplacementOption(option)
-      setReplacementError('')
-      replacementInputRef.current?.click()
-      return
-    }
     if (multi_select) {
       setSelected(prev =>
         prev.includes(option)
@@ -87,40 +54,7 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
           : [...prev, option]
       )
     } else {
-      runAskUserOptionSideEffect(option)
       onResponse(option)
-    }
-  }
-
-  const handleReplacementImages = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files || [])
-    event.target.value = ''
-    if (!selectedFiles.length || !replacementOption) return
-    const maximumImages = /linkedin/i.test(question) ? 20 : 9
-    if (selectedFiles.length > maximumImages) {
-      setReplacementError(`Select no more than ${maximumImages} images.`)
-      return
-    }
-    const invalid = selectedFiles.find(file =>
-      !REPLACEMENT_IMAGE_TYPES.has(file.type) || file.size === 0 || file.size > MAX_REPLACEMENT_IMAGE_BYTES
-    )
-    if (invalid) {
-      setReplacementError('Use PNG, JPEG, or WebP images up to 10 MB each.')
-      return
-    }
-    if (selectedFiles.reduce((total, file) => total + file.size, 0) > MAX_REPLACEMENT_TOTAL_BYTES) {
-      setReplacementError('The selected images must be 80 MB or less in total.')
-      return
-    }
-    setIsUploadingReplacement(true)
-    setReplacementError('')
-    try {
-      const images = await Promise.all(selectedFiles.map(readImageAsDataUrl))
-      onResponse(replacementOption, images)
-    } catch {
-      setReplacementError('The selected images could not be read. Please choose them again.')
-    } finally {
-      setIsUploadingReplacement(false)
     }
   }
 
@@ -158,15 +92,6 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
       'mx-4 mb-5 max-w-xl overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm animate-in fade-in slide-in-from-bottom-3 duration-500',
       className
     )}>
-      <input
-        ref={replacementInputRef}
-        type="file"
-        accept="image/png,image/jpeg,image/webp"
-        multiple
-        onChange={handleReplacementImages}
-        className="hidden"
-        aria-label="Select replacement images"
-      />
       {/* Header-like question area */}
       <div className="border-b border-neutral-100 px-4 py-3">
         <div className="flex items-start gap-3">
@@ -213,22 +138,19 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
             <div className="grid grid-cols-1 gap-1.5">
               {options.map((option, idx) => {
                 const isSelected = selected.includes(option)
-                const isDisabled = isAskUserOptionDisabled(option, disabledOptions)
-                const openUrl = askUserOptionOpenUrl(option)
-                const optionClassName = cn(
-                  'group flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-all duration-200',
-                  isDisabled
-                    ? 'cursor-not-allowed border-neutral-100 bg-neutral-50 text-neutral-400 opacity-70'
-                    : isSelected
-                    ? 'border-neutral-300 bg-neutral-50 text-neutral-900'
-                    : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900'
-                )
-                const optionContent = (
-                  <>
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleOptionClick(option)}
+                    className={cn(
+                      'group flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-all duration-200',
+                      isSelected
+                        ? 'border-neutral-300 bg-neutral-50 text-neutral-900'
+                        : 'border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-900'
+                    )}
+                  >
                     <div className="shrink-0">
-                      {isDisabled ? (
-                        <div className="h-5 w-5 rounded-full border-2 border-neutral-200 bg-neutral-100" />
-                      ) : multi_select ? (
+                      {multi_select ? (
                         isSelected ? (
                           <HiOutlineCheckCircle className="w-5 h-5 text-neutral-900" />
                         ) : (
@@ -239,29 +161,8 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
                       )}
                     </div>
                     <span className={cn(isSelected ? 'font-bold' : 'font-medium')}>
-                      {askUserOptionLabel(option)}
+                      {option}
                     </span>
-                  </>
-                )
-                return openUrl && !isDisabled && !isUploadingReplacement ? (
-                  <a
-                    key={idx}
-                    href={openUrl}
-                    target={OOCHAT_OPENED_WINDOW_NAME}
-                    onClick={() => handleOptionClick(option)}
-                    className={optionClassName}
-                  >
-                    {optionContent}
-                  </a>
-                ) : (
-                  <button
-                    key={idx}
-                    onClick={() => handleOptionClick(option)}
-                    disabled={isDisabled || isUploadingReplacement}
-                    aria-disabled={isDisabled || isUploadingReplacement}
-                    className={optionClassName}
-                  >
-                    {optionContent}
                   </button>
                 )
               })}
@@ -269,7 +170,7 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
 
             {multi_select && (
               <div className="mt-4 flex items-center justify-between border-t border-neutral-100 px-1 pt-4">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-500">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                   {selected.length === 0
                     ? "Select options"
                     : `${selected.length} selected`}
@@ -284,17 +185,6 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
                 </button>
               </div>
             )}
-
-            {replacementError && (
-              <p role="alert" className="px-1 pt-2 text-xs font-medium text-red-600">
-                {replacementError}
-              </p>
-            )}
-            {isUploadingReplacement && (
-              <p role="status" className="px-1 pt-2 text-xs font-medium text-neutral-500">
-                Uploading replacement images…
-              </p>
-            )}
           </div>
         )}
 
@@ -304,7 +194,7 @@ export function ChatAskUser({ askUser, onResponse, className }: ChatAskUserProps
           {hasOptions && (
             <div className="flex items-center gap-2 px-1">
               <div className="h-px flex-1 bg-neutral-100" />
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Or enter custom value</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Or enter custom value</span>
               <div className="h-px flex-1 bg-neutral-100" />
             </div>
           )}

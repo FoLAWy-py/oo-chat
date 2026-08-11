@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import type { ThinkingUI } from '../types'
 
-// Animated working indicator: a glyph that grows from a dot to a starburst,
-// plus a rotating gerund shown on the active status line.
+// Claude-Code-style working indicator: a glyph that grows from a dot to a starburst,
+// plus a rotating gerund. Shown on the running "thinking" line.
 const SPINNER_FRAMES = ['·', '✢', '✳', '∗', '✻', '✽', '✻', '∗', '✳', '✢']
 const GERUNDS = ['Thinking', 'Synthesizing', 'Reasoning', 'Pondering', 'Composing', 'Ruminating', 'Cooking', 'Crunching', 'Percolating', 'Noodling', 'Wrangling', 'Conjuring']
 
@@ -25,27 +25,36 @@ function getActualTokens(usage: ThinkingUI['usage']): number {
      (usage.output_tokens || usage.completion_tokens || 0))
 }
 
-export function Thinking({ thinking, isLast = true }: { thinking: ThinkingUI; isLast?: boolean }) {
+export function Thinking({ thinking, isLast = true, blocked = false }: {
+  thinking: ThinkingUI
+  isLast?: boolean
+  /** The run is stopped, waiting for a human answer. It is not working. */
+  blocked?: boolean
+}) {
   const [seconds, setSeconds] = useState(0)
   const [frame, setFrame] = useState(0)
   const [word, setWord] = useState(0)
   const isRunning = thinking.status === 'running'
 
+  // Resetting the counters is a state change driven by a prop change, not a
+  // side effect. React's documented shape for that is an adjustment during
+  // render — doing it inside the effect renders the stale value once first.
+  const [prevRunning, setPrevRunning] = useState(isRunning)
+  if (prevRunning !== isRunning) {
+    setPrevRunning(isRunning)
+    setSeconds(0)
+    setFrame(0)
+    setWord(0)
+  }
+
   useEffect(() => {
     if (!isRunning) return
-
-    const reset = window.setTimeout(() => {
-      setSeconds(0)
-      setFrame(0)
-      setWord(0)
-    }, 0)
 
     const timeInterval = setInterval(() => setSeconds(s => s + 1), 1000)
     const spin = setInterval(() => setFrame(f => (f + 1) % SPINNER_FRAMES.length), 120)
     const cycle = setInterval(() => setWord(w => (w + 1) % GERUNDS.length), 2800)
 
     return () => {
-      window.clearTimeout(reset)
       clearInterval(timeInterval)
       clearInterval(spin)
       clearInterval(cycle)
@@ -59,9 +68,24 @@ export function Thinking({ thinking, isLast = true }: { thinking: ThinkingUI; is
   if (isRunning) {
     if (!isLast) return null
 
+    // A spinner and a rising clock while the run is stopped on an approval is the
+    // page's loudest statement, and it is false. Every other global signal agreed
+    // with it — the composer stayed enabled with a Stop button, the token counter
+    // kept ticking — while the one true indicator, "Waiting for Permission", was
+    // pushed off the right edge of the phone. The reader is left with a screen that
+    // says "busy" and a job that never finishes (#59).
+    if (blocked) {
+      return (
+        <div className="py-1.5 ml-[60px] flex items-center gap-1.5 text-xs">
+          <span className="w-1.5 h-1.5 rounded-full bg-neutral-900 shrink-0" />
+          <span className="font-medium text-neutral-700">Waiting on your answer</span>
+        </div>
+      )
+    }
+
     return (
       <div className="py-1.5">
-        <div className="flex items-center gap-1.5 text-xs font-mono ml-5">
+        <div className="flex items-center gap-1.5 text-xs font-mono ml-[60px]">
           <span className="inline-block w-3 text-center text-sm leading-none text-neutral-400">{SPINNER_FRAMES[frame]}</span>
           <span className="font-medium text-neutral-500">{GERUNDS[word]}…</span>
           <span className="tabular-nums text-neutral-400">({seconds > 0 ? formatTime(seconds) : '0s'})</span>
@@ -73,7 +97,7 @@ export function Thinking({ thinking, isLast = true }: { thinking: ThinkingUI; is
   // Content state (e.g. detailed thoughts)
   if (thinking.content) {
     return (
-      <div className="py-2 ml-5">
+      <div className="py-2 ml-[60px]">
         <div className="relative pl-4 border-l-2 border-neutral-200">
           <div className="text-[13px] text-neutral-600 leading-relaxed italic">
             {thinking.content}
@@ -95,7 +119,7 @@ export function Thinking({ thinking, isLast = true }: { thinking: ThinkingUI; is
     return (
       <div className="py-1.5">
         {/* Stats stay one line — the model name truncates first on narrow screens */}
-        <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap text-xs text-neutral-400 font-mono ml-5">
+        <div className="flex items-center gap-2 overflow-hidden whitespace-nowrap text-xs text-neutral-400 font-mono ml-[60px]">
           <span className="w-1.5 h-1.5 shrink-0 rounded-full bg-neutral-300" />
           <span className="min-w-0 truncate">{model || 'done'}</span>
           <span className="text-neutral-300">·</span>

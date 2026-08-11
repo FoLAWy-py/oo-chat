@@ -9,7 +9,6 @@ import {
   HiOutlineClipboardCopy,
   HiOutlineCheck,
   HiOutlineShieldCheck,
-  HiOutlineCreditCard,
   HiOutlineServer,
   HiOutlineUserCircle,
   HiOutlineTrash,
@@ -22,9 +21,9 @@ import {
 import { ChatLayout } from '@/components/chat-layout'
 import { useChatStore } from '@/store/chat-store'
 import { useIdentity } from '@/hooks/use-identity'
-import { useAgentInfo, shortAddress } from '@/hooks/use-agent-info'
+import { useAgentInfo, shortAddress, isAgentAddress, ADDRESS_ERROR } from '@/hooks/use-agent-info'
+import { TopUp } from '@/components/agent-address'
 import { ConfirmDialog } from '@/components/confirm-dialog'
-import { deleteServerSessions } from '@/components/chat/session-lifecycle'
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -33,7 +32,6 @@ export default function SettingsPage() {
     addAgent,
     removeAgent,
     openonionApiKey,
-    userProfile,
     conversations,
   } = useChatStore()
 
@@ -41,7 +39,6 @@ export default function SettingsPage() {
 
   const {
     identity,
-    authLoading,
     authError,
     showRecoveryPhrase,
     newMnemonic,
@@ -55,6 +52,7 @@ export default function SettingsPage() {
   const [importKeyInput, setImportKeyInput] = useState('')
   const [copiedField, setCopiedField] = useState<string | null>(null)
   const [newAgentAddress, setNewAgentAddress] = useState('')
+  const [addAgentError, setAddAgentError] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
 
   const handleImportKey = useCallback(() => {
@@ -68,12 +66,19 @@ export default function SettingsPage() {
     e.preventDefault()
     const trimmed = newAgentAddress.trim()
     if (!trimmed) return
+    // The root picker has always checked this; Settings added whatever was typed,
+    // so a truncated paste became a permanent entry that shows as offline forever
+    // and navigates to a route that cannot resolve.
+    if (!isAgentAddress(trimmed)) {
+      setAddAgentError(ADDRESS_ERROR)
+      return
+    }
+    setAddAgentError('')
     addAgent(trimmed)
     setNewAgentAddress('')
   }, [newAgentAddress, addAgent])
 
   const [pendingRemove, setPendingRemove] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
   const pendingRemoveChats = pendingRemove
     ? conversations.filter(c => c.agentAddress === pendingRemove).length
     : 0
@@ -111,74 +116,32 @@ export default function SettingsPage() {
               </div>
               <div>
                 <h2 className="font-serif text-xl font-semibold text-neutral-900">Account</h2>
-                <p className="text-xs text-neutral-500 font-medium">Manage your identity and credits</p>
+                <p className="text-xs text-neutral-500 font-medium">Your identity and communication key</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Balance Card */}
-              <div className="md:col-span-1 bg-neutral-900 rounded-3xl p-8 text-white shadow-2xl flex flex-col justify-between relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/10 transition-all duration-700" />
-
-                <div>
-                  <div className="flex items-center justify-between mb-8">
-                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest flex items-center gap-2">
-                      <HiOutlineCreditCard className="w-4 h-4" />
-                      Balance
-                    </span>
-                    {authLoading && (
-                      <span className="w-2 h-2 bg-neutral-500 rounded-full animate-ping" />
-                    )}
-                  </div>
-
-                  {authError ? (
-                    <div className="text-red-300 text-xs bg-red-900/30 px-3 py-2 rounded-xl border border-red-800/50">
-                      {authError}
-                    </div>
-                  ) : userProfile ? (
-                    <div className="space-y-1">
-                      <div className="text-4xl font-black tracking-tighter">
-                        ${userProfile.balance_usd.toFixed(2)}
-                      </div>
-                      <div className="text-[10px] text-neutral-400 font-medium uppercase tracking-wider">Available Credits</div>
-                    </div>
-                  ) : (
-                    <div className="text-neutral-500 text-sm font-medium italic">Syncing...</div>
-                  )}
+            <div className="grid grid-cols-1 gap-6">
+              {/* This browser identity is not an agent — it signs you in and carries
+                  the ConnectOnion protocol. Credits belong to the agents you connect
+                  to (shown per agent below), so no balance is featured here. */}
+              {authError && (
+                <div className="text-red-700 text-xs bg-red-50 px-4 py-3 rounded-2xl border border-red-200">
+                  {authError}
                 </div>
-
-                <div className="mt-8">
-                  {userProfile && (
-                    <div className="flex items-center gap-6 py-4 border-t border-white/10 text-[11px] text-white/50 font-bold uppercase tracking-wider">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-white/30">Purchased</span>
-                        <span className="text-white">${userProfile.credits_usd.toFixed(2)}</span>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-white/30">Spent</span>
-                        <span className="text-white">${userProfile.total_cost_usd.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  )}
-                  <a
-                    href="https://o.openonion.ai/purchase"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-6 block w-full py-3 bg-white hover:bg-neutral-200 text-neutral-900 text-center text-xs font-bold rounded-xl transition-all active:scale-95"
-                  >
-                    + Add Credits
-                  </a>
-                </div>
-              </div>
+              )}
 
               {/* Identity Details Card */}
-              <div className="md:col-span-2 bg-white rounded-3xl p-8 border border-neutral-200/60 shadow-sm space-y-8">
+              <div className="bg-white rounded-3xl p-8 border border-neutral-200/60 shadow-sm space-y-8">
                 {identity ? (
                   <>
+                    <p className="text-xs text-neutral-500 leading-relaxed -mt-1">
+                      This key signs you in and carries the ConnectOnion protocol. It isn&apos;t an
+                      agent and holds no agent credits — each agent&apos;s balance is shown below.
+                    </p>
                     <div className="space-y-6">
                       <div className="space-y-3">
-                        <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-1">
-                          Wallet Address
+                        <label className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide px-1">
+                          Identity Address
                         </label>
                         <div className="group relative">
                           <div className="w-full px-4 py-3 bg-neutral-50 border border-neutral-100 rounded-2xl text-xs font-mono text-neutral-600 break-all leading-relaxed pr-12 transition-all hover:bg-white hover:border-neutral-200">
@@ -195,7 +158,7 @@ export default function SettingsPage() {
                       </div>
 
                       <div className="space-y-3">
-                        <label className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-1">
+                        <label className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide px-1">
                           API Key
                         </label>
                         <div className="group relative">
@@ -254,7 +217,7 @@ export default function SettingsPage() {
 
                     {showImportKey && (
                       <div className="mt-4 p-5 bg-neutral-50 rounded-2xl border border-neutral-200/50 animate-in zoom-in-95 duration-200">
-                        <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider mb-3 px-1">
+                        <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wide mb-3 px-1">
                           Recovery Mnemonic
                         </label>
                         <textarea
@@ -283,7 +246,7 @@ export default function SettingsPage() {
                 ) : (
                   <div className="py-12 flex flex-col items-center justify-center gap-4">
                     <div className="w-8 h-8 border-4 border-neutral-200 border-t-neutral-900 rounded-full animate-spin" />
-                    <p className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Encrypting Identity...</p>
+                    <p className="text-sm font-bold text-neutral-500 uppercase tracking-wide">Encrypting Identity...</p>
                   </div>
                 )}
               </div>
@@ -309,12 +272,18 @@ export default function SettingsPage() {
                   {agents.map(address => {
                     const info = infoMap[address]
                     return (
-                      <div key={address} className="flex items-center gap-4 px-8 py-5 group">
+                      // Stacked on a phone. In one row the fixed parts — 64px of
+                      // padding, three gaps, the status dot, the top-up pill and the
+                      // delete button — left about 96px for the agent, so the address
+                      // collapsed to "0…" and the tool chips wrapped one per line into
+                      // a tall column. Side by side again from sm up.
+                      <div key={address} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-8 sm:py-5 group">
+                        <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
                         {/* Online indicator */}
                         <div className="shrink-0">
                           {info?.online !== undefined ? (
                             info.online
-                              ? <HiOutlineStatusOnline className="w-5 h-5 text-green-500" />
+                              ? <HiOutlineStatusOnline className="w-5 h-5 text-brand-500" />
                               : <HiOutlineStatusOffline className="w-5 h-5 text-neutral-300" />
                           ) : (
                             <div className="w-5 h-5 flex items-center justify-center">
@@ -330,7 +299,7 @@ export default function SettingsPage() {
                               {info?.name || shortAddress(address)}
                             </span>
                             {info?.trust && (
-                              <span className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full uppercase">
+                              <span className="text-[11px] font-bold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full uppercase">
                                 {info.trust}
                               </span>
                             )}
@@ -341,7 +310,7 @@ export default function SettingsPage() {
                             </span>
                             <button
                               onClick={() => copyToClipboard(address, `agent-${address}`)}
-                              className="shrink-0 p-1 text-neutral-300 hover:text-neutral-600 transition-colors"
+                              className="inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded text-neutral-300 hover:text-neutral-600 transition-colors"
                               title="Copy agent address"
                               aria-label="Copy agent address"
                             >
@@ -354,35 +323,49 @@ export default function SettingsPage() {
                           {info?.tools && info.tools.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 mt-2">
                               {info.tools.slice(0, 5).map(tool => (
-                                <span key={tool} className="text-[10px] font-medium text-neutral-500 bg-neutral-50 px-2 py-0.5 rounded-md border border-neutral-100">
+                                <span key={tool} className="text-[11px] font-medium text-neutral-500 bg-neutral-50 px-2 py-0.5 rounded-md border border-neutral-100">
                                   {tool}
                                 </span>
                               ))}
                               {info.tools.length > 5 && (
-                                <span className="text-[10px] font-medium text-neutral-500">
+                                <span className="text-[11px] font-medium text-neutral-500">
                                   +{info.tools.length - 5} more
                                 </span>
                               )}
                             </div>
                           )}
                         </div>
+                        </div>
 
-                        {/* Delete */}
-                        <button
-                          onClick={() => setPendingRemove(address)}
-                          className="shrink-0 p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                          title="Remove agent"
-                          aria-label="Remove agent"
-                        >
-                          <HiOutlineTrash className="w-4 h-4" />
-                        </button>
+                        {/* Balance and delete travel together: on a phone they are their
+                            own row under the agent, on desktop they sit at the end of it.
+                            Only co/* managed-key agents publish a balance (see AgentInfo). */}
+                        <div className="flex shrink-0 items-center justify-end gap-3 sm:gap-4">
+                          {typeof info?.balance_usd === 'number' && (
+                            <TopUp address={address} balanceUsd={info.balance_usd} />
+                          )}
+                          <button
+                            onClick={() => setPendingRemove(address)}
+                            className="shrink-0 p-2 text-neutral-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                            title="Remove agent"
+                            aria-label="Remove agent"
+                          >
+                            <HiOutlineTrash className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     )
                   })}
                 </div>
               ) : (
                 <div className="px-8 py-12 text-center">
-                  <p className="text-sm text-neutral-500 font-medium">No agents added yet</p>
+                  {/* A sentence with no way out. Someone reaching this screen has
+                      nothing in the app yet, so it should say what to do next
+                      rather than only what is absent. */}
+                  <p className="text-sm text-neutral-600">No agents yet</p>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Paste an agent&apos;s address below, or open a link someone shared with you.
+                  </p>
                 </div>
               )}
 
@@ -392,7 +375,7 @@ export default function SettingsPage() {
                 <input
                   type="text"
                   value={newAgentAddress}
-                  onChange={(e) => setNewAgentAddress(e.target.value)}
+                  onChange={(e) => { setNewAgentAddress(e.target.value); if (addAgentError) setAddAgentError('') }}
                   placeholder="Paste agent address (0x...)"
                   className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-neutral-200 text-neutral-900 focus:border-neutral-400 focus:ring-2 focus:ring-neutral-200/50 outline-none font-mono text-xs transition-all placeholder:text-neutral-400"
                 />
@@ -404,6 +387,12 @@ export default function SettingsPage() {
                   Add
                 </button>
               </form>
+              {/* Validating silently would be no better than not validating: the
+                  reader pastes, presses Add, nothing appears, and nothing says
+                  why. */}
+              {addAgentError && (
+                <p role="alert" className="mt-2 text-xs text-red-600">{addAgentError}</p>
+              )}
             </div>
           </section>
         </main>
@@ -433,7 +422,7 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-3 gap-3 mb-10">
                   {newMnemonic.split(' ').map((word, i) => (
                     <div key={i} className="flex flex-col gap-1 p-3 bg-neutral-50 rounded-2xl border border-neutral-100/50 group hover:bg-neutral-100 hover:border-neutral-200 transition-all duration-300">
-                      <span className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">{i + 1}</span>
+                      <span className="text-[11px] text-neutral-500 font-medium uppercase tracking-wide">{i + 1}</span>
                       <span className="text-xs font-mono text-neutral-800 font-bold">{word}</span>
                     </div>
                   ))}
@@ -464,22 +453,7 @@ export default function SettingsPage() {
           title="Remove this agent?"
           confirmLabel="Remove"
           body={pendingRemove ? `${infoMap[pendingRemove]?.name || 'This agent'}${pendingRemoveChats > 0 ? ` and its ${pendingRemoveChats} chat${pendingRemoveChats > 1 ? 's' : ''}` : ''} will be removed. This cannot be undone.` : undefined}
-          onConfirm={async () => {
-            if (!pendingRemove || deleting) return
-            setDeleting(true)
-            try {
-              const sessionIds = conversations
-                .filter(c => c.agentAddress === pendingRemove)
-                .map(c => c.sessionId)
-              await deleteServerSessions(sessionIds)
-              removeAgent(pendingRemove)
-              setPendingRemove(null)
-            } catch (error) {
-              window.alert(error instanceof Error ? error.message : 'Session cleanup failed')
-            } finally {
-              setDeleting(false)
-            }
-          }}
+          onConfirm={() => { if (pendingRemove) removeAgent(pendingRemove); setPendingRemove(null) }}
           onCancel={() => setPendingRemove(null)}
         />
       </div>

@@ -6,28 +6,22 @@ import remarkGfm from 'remark-gfm'
 import { HiOutlineArrowDownTray } from 'react-icons/hi2'
 import type { AgentUI } from '../types'
 import { downloadImage, imageFileName } from '../utils'
-import { extractLinkedInEmbeds, LinkedInEmbeds } from './linkedin-embed'
-import { extractRedNoteMedia, RedNoteMediaCards } from './rednote-media'
 
 export function Agent({ message }: { message: AgentUI }) {
-  const rawContent = typeof message.content === 'string' ? message.content : ''
-  const { text: contentWithoutLinkedIn, embeds } = extractLinkedInEmbeds(rawContent)
-  const { text: content, mediaGroups } = extractRedNoteMedia(contentWithoutLinkedIn)
+  const content = typeof message.content === 'string' ? message.content : ''
   // The SDK strips base64 payloads from persisted sessions — items can carry
   // image entries that no longer render. Filter them so no phantom gap remains.
   const images = (Array.isArray(message.images) ? message.images : [])
     .filter(src => src.startsWith('data:') || src.startsWith('http') || src.startsWith('blob:'))
   const hasImages = images.length > 0
   const hasText = content.trim().length > 0
-  const hasEmbeds = embeds.length > 0
-  const hasMediaGroups = mediaGroups.length > 0
 
-  if (!hasText && !hasImages && !hasEmbeds && !hasMediaGroups) return null
+  if (!hasText && !hasImages) return null
 
   // Image-only items are tool output (e.g. take_screenshot streams an
   // agent_image event with no text) — render the image plainly, without the
   // avatar bubble that would make it look like the agent "said" something.
-  if (!hasText && !hasEmbeds && !hasMediaGroups) {
+  if (!hasText) {
     return (
       <div className="py-2 pl-11">
         <AgentImages images={images} />
@@ -57,16 +51,7 @@ export function Agent({ message }: { message: AgentUI }) {
             prose-a:text-neutral-900 prose-a:font-medium prose-a:underline prose-a:underline-offset-2 prose-a:decoration-neutral-300 hover:prose-a:decoration-neutral-900
             prose-blockquote:border-l-4 prose-blockquote:border-neutral-200 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-neutral-600
           ">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ children, ...props }) => (
-                  <a {...props} target="_blank" rel="noopener noreferrer">
-                    {children}
-                  </a>
-                ),
-              }}
-            >
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {content}
             </ReactMarkdown>
           </div>
@@ -74,8 +59,6 @@ export function Agent({ message }: { message: AgentUI }) {
 
         {/* Images - displayed below text */}
         {hasImages && <AgentImages images={images} />}
-        {hasMediaGroups && <RedNoteMediaCards mediaGroups={mediaGroups} />}
-        {hasEmbeds && <LinkedInEmbeds embeds={embeds} />}
       </div>
     </div>
   )
@@ -89,6 +72,10 @@ function AgentImages({ images }: { images: string[] }) {
       {images.map((img, i) => (
         <div key={i} className="group relative w-fit">
           {/* Preview-scale in the transcript; click to inspect full-size */}
+          {/* Attachments arrive as base64 data: URLs in the event stream. next/image
+              cannot optimise those — it needs a routable URL or a static import — so
+              plain <img> is correct here, not a shortcut. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={img}
             alt={`Image ${i + 1}`}
@@ -112,6 +99,10 @@ function AgentImages({ images }: { images: string[] }) {
           className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-neutral-900/80 p-6"
           onClick={() => setZoomed(null)}
         >
+          {/* Attachments arrive as base64 data: URLs in the event stream. next/image
+              cannot optimise those — it needs a routable URL or a static import — so
+              plain <img> is correct here, not a shortcut. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={zoomed} alt="Expanded view" className="max-h-full max-w-full rounded-lg shadow-2xl" />
         </div>
       )}

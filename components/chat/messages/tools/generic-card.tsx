@@ -62,25 +62,31 @@ export function GenericCard({ toolCall, pendingApproval, onApprovalResponse }: G
         className={`flex h-7 w-full items-center gap-1.5 cursor-pointer select-none text-left rounded-md px-1.5 -mx-1.5 py-1 -my-1 ${isError ? 'bg-red-50/60 hover:bg-red-50' : 'hover:bg-neutral-100/70'}`}
         onClick={() => (hasOutput || (needsApproval && hasArgs)) && setIsExpanded(!isExpanded)}
       >
+        {/* Same 60px rail as the other tool rows. This card is the fallback for
+            any tool without its own renderer, so if it drifts every unrecognised
+            tool drifts with it. No tool icon here, so that slot stays empty. */}
+        <div className="flex w-[60px] shrink-0 items-center gap-1.5">
         {(hasOutput || (needsApproval && hasArgs)) ? (
-          <HiOutlineChevronRight className={`w-3 h-3 shrink-0 text-neutral-400 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
-        ) : (
-          <span className="w-3 shrink-0" />
-        )}
+            <HiOutlineChevronRight className={`w-3 h-3 shrink-0 text-neutral-400 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
+          ) : (
+            <span className="w-3 shrink-0" />
+          )}
 
-        {/* Status slot: quiet when done, pulsing dot while live, red X on error/rejection */}
-        {isError || (status === 'running' && rejected) ? (
-          <HiOutlineX className="w-4 h-4 shrink-0 text-red-500" />
-        ) : status === 'running' ? (
-          <span className={`mx-[5px] h-1.5 w-1.5 shrink-0 rounded-full animate-pulse ${needsApproval && !approvalSent ? 'bg-neutral-400' : 'bg-brand-500'}`} />
-        ) : (
-          <span className="w-4 shrink-0" />
-        )}
+          {/* Status slot: quiet when done, pulsing dot while live, red X on error/rejection */}
+          {isError || (status === 'running' && rejected) ? (
+            <HiOutlineX className="w-4 h-4 shrink-0 text-red-500" />
+          ) : status === 'running' ? (
+            <span className={`mx-[5px] h-1.5 w-1.5 shrink-0 rounded-full animate-pulse ${needsApproval && !approvalSent ? 'bg-neutral-400' : 'bg-brand-500'}`} />
+          ) : (
+            <span className="w-4 shrink-0" />
+          )}
+          <span className="w-4 shrink-0" aria-hidden="true" />
+        </div>
 
         <span className={`text-[13px] font-medium shrink-0 whitespace-nowrap ${isError ? 'text-red-600' : 'text-neutral-800'}`}>{name}</span>
         {argsStr && <span className="min-w-0 flex-1 truncate font-mono text-xs text-neutral-500">{argsStr}</span>}
 
-        <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] tabular-nums text-neutral-400">
+        <span className="ml-auto shrink-0 whitespace-nowrap text-[11px] tabular-nums text-neutral-500">
           {status === 'done' || status === 'error' ? (
             <>
               {!isExpanded && outputLines > 1 && `${outputLines} lines · `}
@@ -100,21 +106,21 @@ export function GenericCard({ toolCall, pendingApproval, onApprovalResponse }: G
 
       {/* Collapsed error rows surface the failure reason inline — one truncated line */}
       {isError && hasOutput && !isExpanded && (
-        <div className="ml-7 mb-1 truncate text-xs text-red-600/80">{result.split('\n')[0]}</div>
+        <div className="ml-[60px] mb-1 truncate text-xs text-red-600/80">{result.split('\n')[0]}</div>
       )}
 
       {/* Approval - separate from tool display */}
       {needsApproval && status === 'running' && (
-        <div className="mt-2 ml-5 mb-2">
+        <div className="mt-2 ml-[60px] mb-2">
           <ApprovalButtons approvalSent={approvalSent} onApproval={handleApproval} toolName={name} description={pendingApproval?.description} batchRemaining={pendingApproval?.batch_remaining} />
         </div>
       )}
 
       {/* Arguments — inspectable while awaiting approval, so users can see what they're approving */}
       {needsApproval && hasArgs && isExpanded && (
-        <div className="animate-in mb-1 ml-7 overflow-hidden rounded-md border border-neutral-200 bg-white">
+        <div className="animate-in mb-1 ml-[60px] overflow-hidden rounded-md border border-neutral-200 bg-white">
           <div className="px-3 py-2.5">
-            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400">Arguments</div>
+            <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500">Arguments</div>
             <KVRows data={args} />
           </div>
         </div>
@@ -122,9 +128,9 @@ export function GenericCard({ toolCall, pendingApproval, onApprovalResponse }: G
 
       {/* Output */}
       {!needsApproval && hasOutput && isExpanded && (
-        <div className="animate-in mb-1 ml-7 overflow-hidden rounded-md border border-neutral-200 bg-white">
+        <div className="animate-in mb-1 ml-[60px] overflow-hidden rounded-md border border-neutral-200 bg-white">
           <div className={`px-3 py-2.5 ${isError ? 'bg-red-50/50' : ''}`}>
-            <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wider text-neutral-400">Result</div>
+            <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-neutral-500">Result</div>
             {typeof parsedResult === 'string' ? (
               <pre className={`whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-72 overflow-y-auto ${isError ? 'text-red-700' : 'text-neutral-700'}`}>
                 {result}

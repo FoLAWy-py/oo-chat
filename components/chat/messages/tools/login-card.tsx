@@ -6,7 +6,7 @@
 // ask-user-skip — the chat must never deadlock on an unanswered prompt.
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import type { ToolCallUI, PendingAskUser, AskUserResponseHandler } from '../../types'
+import type { ToolCallUI, PendingAskUser } from '../../types'
 import { HiOutlineLockClosed, HiOutlineCheck, HiOutlineX } from 'react-icons/hi'
 import { addSecret } from './redact'
 import { ASK_USER_SKIP_ANSWER, SkipButton } from '../../ask-user-skip'
@@ -19,7 +19,7 @@ function isPasswordField(f: { name: string; type?: string }): boolean {
 interface LoginCardProps {
   toolCall: ToolCallUI
   pendingAskUser?: PendingAskUser | null
-  onAskUserResponse?: AskUserResponseHandler
+  onAskUserResponse?: (answer: string | string[]) => void
 }
 
 // Login is handled separately from ask_user: a pop-up form, and the transcript
@@ -31,10 +31,11 @@ export function LoginCard({ toolCall, pendingAskUser, onAskUserResponse }: Login
   const [skipped, setSkipped] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setMounted(true))
-    return () => window.cancelAnimationFrame(frame)
-  }, [])
+  // Deliberate: the server renders mounted=false and the client flips it after
+  // hydration, so browser-only UI below never renders into the server HTML and
+  // cannot cause a hydration mismatch. Setting it during render would defeat it.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), [])
 
   const question = (args?.question as string) || ''
   const fields = pendingAskUser?.fields
@@ -63,11 +64,11 @@ export function LoginCard({ toolCall, pendingAskUser, onAskUserResponse }: Login
         className={`flex items-center gap-2 py-2 text-sm ${isPending && dismissed ? 'cursor-pointer' : ''}`}
         onClick={isPending && dismissed ? () => setDismissed(false) : undefined}
       >
-        <div className={`flex items-center justify-center w-5 h-5 rounded-full ${done && !skipped ? 'bg-green-100/60' : 'bg-neutral-100'}`}>
+        <div className={`flex items-center justify-center w-5 h-5 rounded-full ${done && !skipped ? 'bg-brand-100/60' : 'bg-neutral-100'}`}>
           {skipped
             ? <HiOutlineX className="w-3 h-3 text-neutral-500" />
             : done
-              ? <HiOutlineCheck className="w-3 h-3 text-green-600" />
+              ? <HiOutlineCheck className="w-3 h-3 text-brand-600" />
               : <HiOutlineLockClosed className="w-3 h-3 text-neutral-500" />}
         </div>
         <span className="font-medium text-neutral-600">

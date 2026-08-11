@@ -2,16 +2,15 @@
 
 import React, { useState } from 'react'
 import type { ToolCallUI, PendingApproval } from '../../types'
-import {
-  HiOutlineChevronRight,
-  HiOutlineChevronDown,
-  HiOutlineCloud,
+import { 
+  HiOutlineChevronRight, 
+  HiOutlineChevronDown, 
   HiOutlineCheck,
-  HiOutlineX,
   HiOutlineTerminal,
   HiOutlineClock
 } from 'react-icons/hi'
 import { ApprovalButtons } from './approval-buttons'
+import { ToolStatus } from './tool-status'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -34,7 +33,7 @@ export function BackgroundCard({ toolCall, pendingApproval, onApprovalResponse }
   const { args, status, result, timing_ms } = toolCall
   const [isExpanded, setIsExpanded] = useState(false)
   const [approvalSent, setApprovalSent] = useState<'approved' | 'approved_session' | 'skipped' | 'stopped' | null>(null)
-
+  
   const description = args?.description as string || 'Background Task'
   const prompt = args?.prompt as string
   const subagent = args?.subagent_type as string
@@ -69,28 +68,15 @@ export function BackgroundCard({ toolCall, pendingApproval, onApprovalResponse }
                 <span className="absolute inline-flex h-4 w-4 rounded-full bg-neutral-500 opacity-10 animate-pulse" />
               </>
             )}
-
-            {status === 'done' ? (
-              <div className="flex items-center justify-center w-5 h-5 rounded-full bg-green-100/50">
-                <HiOutlineCheck className="w-3 h-3 text-green-600" />
-              </div>
-            ) : status === 'error' ? (
-              <div className="flex items-center justify-center w-5 h-5 rounded-full bg-red-100/50">
-                <HiOutlineX className="w-3 h-3 text-red-600" />
-              </div>
-            ) : (
-              <HiOutlineCloud className={cn(
-                "w-4 h-4 relative z-10",
-                status === 'running' ? "text-neutral-600" : "text-neutral-500"
-              )} />
-            )}
+            
+            <ToolStatus status={status} />
           </div>
 
           <div className="flex flex-col">
             <span className="text-sm font-bold text-neutral-800 tracking-tight leading-none">
               {description}
             </span>
-            <span className="text-[10px] text-neutral-400 font-medium uppercase tracking-wider mt-0.5">
+            <span className="text-[11px] text-neutral-400 font-medium uppercase tracking-wide mt-0.5">
               {subagent ? `${subagent} Agent` : 'Background Process'}
               {taskId && <span className="ml-1 font-mono opacity-70">#{taskId.slice(0, 6)}</span>}
             </span>
@@ -99,23 +85,23 @@ export function BackgroundCard({ toolCall, pendingApproval, onApprovalResponse }
 
         <div className="flex items-center gap-2">
           {status === 'done' || status === 'error' ? (
-            <span className="text-neutral-400 text-[10px] uppercase font-bold tracking-widest flex items-center gap-1">
+            <span className="text-neutral-400 text-[11px] uppercase font-bold tracking-wide flex items-center gap-1">
               {timing_ms && <HiOutlineClock className="w-3 h-3" />}
               {timing_ms ? formatTime(timing_ms) : (status === 'done' ? 'Completed' : 'Failed')}
             </span>
           ) : needsApproval && approvalSent ? (
             <span className={cn(
-              "text-[10px] uppercase font-bold tracking-widest",
+              "text-[11px] uppercase font-bold tracking-wide",
               approvalSent === 'skipped' ? "text-neutral-400" : "text-red-500"
             )}>
               {approvalSent === 'skipped' ? 'Skipped' : 'Stopped'}
             </span>
           ) : needsApproval ? (
-            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest animate-pulse">
+            <span className="text-neutral-500 text-[11px] uppercase font-bold tracking-wide animate-pulse">
               Approval Needed
             </span>
           ) : (
-            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest animate-pulse">
+            <span className="text-neutral-500 text-[11px] uppercase font-bold tracking-wide animate-pulse">
               Processing...
             </span>
           )}
@@ -141,7 +127,7 @@ export function BackgroundCard({ toolCall, pendingApproval, onApprovalResponse }
           {result && (
             <div className="mt-3">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <HiOutlineCheck className="w-3.5 h-3.5 text-green-500" />
+                <HiOutlineCheck className="w-3.5 h-3.5 text-brand-500" />
                 <span className="text-xs font-medium text-neutral-500">Result</span>
               </div>
               <div className="bg-[#1e1e1e] rounded-lg overflow-hidden">
