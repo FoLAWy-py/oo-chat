@@ -6,22 +6,28 @@ import remarkGfm from 'remark-gfm'
 import { HiOutlineArrowDownTray } from 'react-icons/hi2'
 import type { AgentUI } from '../types'
 import { downloadImage, imageFileName } from '../utils'
+import { extractLinkedInEmbeds, LinkedInEmbeds } from './linkedin-embed'
+import { extractRedNoteMedia, RedNoteMediaCards } from './rednote-media'
 
 export function Agent({ message }: { message: AgentUI }) {
-  const content = typeof message.content === 'string' ? message.content : ''
+  const rawContent = typeof message.content === 'string' ? message.content : ''
+  const { text: contentWithoutLinkedIn, embeds } = extractLinkedInEmbeds(rawContent)
+  const { text: content, media: redNoteMedia } = extractRedNoteMedia(contentWithoutLinkedIn)
   // The SDK strips base64 payloads from persisted sessions — items can carry
   // image entries that no longer render. Filter them so no phantom gap remains.
   const images = (Array.isArray(message.images) ? message.images : [])
     .filter(src => src.startsWith('data:') || src.startsWith('http') || src.startsWith('blob:'))
   const hasImages = images.length > 0
   const hasText = content.trim().length > 0
+  const hasEmbeds = embeds.length > 0
+  const hasRedNoteMedia = redNoteMedia.length > 0
 
-  if (!hasText && !hasImages) return null
+  if (!hasText && !hasImages && !hasEmbeds && !hasRedNoteMedia) return null
 
   // Image-only items are tool output (e.g. take_screenshot streams an
   // agent_image event with no text) — render the image plainly, without the
   // avatar bubble that would make it look like the agent "said" something.
-  if (!hasText) {
+  if (!hasText && !hasEmbeds && !hasRedNoteMedia) {
     return (
       <div className="py-2 pl-11">
         <AgentImages images={images} />
@@ -59,6 +65,8 @@ export function Agent({ message }: { message: AgentUI }) {
 
         {/* Images - displayed below text */}
         {hasImages && <AgentImages images={images} />}
+        {hasEmbeds && <LinkedInEmbeds embeds={embeds} />}
+        {hasRedNoteMedia && <RedNoteMediaCards media={redNoteMedia} />}
       </div>
     </div>
   )
