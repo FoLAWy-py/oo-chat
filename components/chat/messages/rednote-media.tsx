@@ -94,18 +94,28 @@ function normalizeMediaItem(value: unknown, index: number): RedNoteMediaItem | n
   const url = normalizeEvidenceUrl(item.url)
   const mimeType = typeof item.mime_type === 'string' ? item.mime_type.trim().toLowerCase() : ''
   const kind = item.kind === 'video' ? 'video' : item.kind === 'image' ? 'image' : null
-  const validType = kind === 'video' ? VIDEO_TYPES.has(mimeType) : IMAGE_TYPES.has(mimeType)
-  if (!url || !kind || !validType || (kind === 'video' && item.playable !== true)) {
+  const videoPosterFallback = kind === 'video'
+    && item.playable !== true
+    && IMAGE_TYPES.has(mimeType)
+  const displayKind = videoPosterFallback ? 'image' : kind
+  const validType = displayKind === 'video'
+    ? VIDEO_TYPES.has(mimeType) && item.playable === true
+    : displayKind === 'image' && IMAGE_TYPES.has(mimeType)
+  if (!url || !displayKind || !validType) {
     return null
   }
 
   return {
-    id: shortText(item.id, `${kind}-${index + 1}`, 160),
-    kind,
+    id: shortText(item.id, `${displayKind}-${index + 1}`, 160),
+    kind: displayKind,
     url,
     mimeType,
-    posterUrl: normalizeEvidenceUrl(item.poster_url),
-    caption: shortText(item.caption, 'RedNote video', 240),
+    posterUrl: displayKind === 'video' ? normalizeEvidenceUrl(item.poster_url) : undefined,
+    caption: shortText(
+      item.caption,
+      videoPosterFallback ? 'RedNote video poster' : 'RedNote video',
+      240,
+    ),
     width: boundedNumber(item.width, 720, 160, 3840),
     height: boundedNumber(item.height, 1280, 160, 3840),
     durationMs: typeof item.duration_ms === 'number' && Number.isFinite(item.duration_ms)

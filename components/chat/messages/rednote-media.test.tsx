@@ -130,6 +130,34 @@ describe('RedNote media directives', () => {
     expect(renderToStaticMarkup(<RedNoteMediaCards media={result.media} />)).toContain('<img')
   })
 
+  test('renders a non-playable video poster without dropping the post card', () => {
+    const result = extractRedNoteMedia(directive({
+      provider: 'rednote',
+      group_id: 'video-poster-post',
+      title: 'Poster fallback post',
+      post_url: 'https://www.rednote.com/explore/post-2',
+      items: [video({
+        playable: false,
+        mime_type: 'image/png',
+        url: 'http://localhost:8000/evidence/v1/session-1/video-poster?token=poster-token',
+        caption: 'RedNote video poster',
+      })],
+      verification: {
+        url: 'http://localhost:8000/evidence/v1/session-1/proof-2?token=proof-token',
+        mime_type: 'image/png',
+        content: 'Verification after opening the post',
+      },
+    }))
+
+    expect(result.media).toHaveLength(1)
+    expect(result.media[0].items[0].kind).toBe('image')
+    const markup = renderToStaticMarkup(<RedNoteMediaCards media={result.media} />)
+    expect(markup).toContain('Poster fallback post')
+    expect(markup).toContain('video-poster?token=poster-token')
+    expect(markup).toContain('Open this post on RedNote')
+    expect(markup).toContain('Verification screenshot')
+  })
+
   test.each([
     video({ url: 'https://example.com/video.mp4?token=abc' }),
     video({ url: 'javascript:alert(1)' }),
