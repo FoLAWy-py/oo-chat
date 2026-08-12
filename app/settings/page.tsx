@@ -24,6 +24,7 @@ import { useIdentity } from '@/hooks/use-identity'
 import { useAgentInfo, shortAddress, isAgentAddress, ADDRESS_ERROR } from '@/hooks/use-agent-info'
 import { TopUp } from '@/components/agent-address'
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { deleteServerSessions } from '@/components/chat/session-lifecycle'
 
 export default function SettingsPage() {
   const router = useRouter()
@@ -79,6 +80,7 @@ export default function SettingsPage() {
   }, [newAgentAddress, addAgent])
 
   const [pendingRemove, setPendingRemove] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const pendingRemoveChats = pendingRemove
     ? conversations.filter(c => c.agentAddress === pendingRemove).length
     : 0
@@ -453,7 +455,22 @@ export default function SettingsPage() {
           title="Remove this agent?"
           confirmLabel="Remove"
           body={pendingRemove ? `${infoMap[pendingRemove]?.name || 'This agent'}${pendingRemoveChats > 0 ? ` and its ${pendingRemoveChats} chat${pendingRemoveChats > 1 ? 's' : ''}` : ''} will be removed. This cannot be undone.` : undefined}
-          onConfirm={() => { if (pendingRemove) removeAgent(pendingRemove); setPendingRemove(null) }}
+          onConfirm={async () => {
+            if (!pendingRemove || deleting) return
+            setDeleting(true)
+            try {
+              const sessionIds = conversations
+                .filter(conversation => conversation.agentAddress === pendingRemove)
+                .map(conversation => conversation.sessionId)
+              await deleteServerSessions(sessionIds)
+              removeAgent(pendingRemove)
+              setPendingRemove(null)
+            } catch (error) {
+              window.alert(error instanceof Error ? error.message : 'Session cleanup failed')
+            } finally {
+              setDeleting(false)
+            }
+          }}
           onCancel={() => setPendingRemove(null)}
         />
       </div>

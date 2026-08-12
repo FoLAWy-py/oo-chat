@@ -138,6 +138,9 @@ export function ChatInput({
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter confirms an in-progress IME composition before it should submit the
+    // message. This matters for Chinese, Japanese and Korean input methods.
+    if (e.nativeEvent.isComposing) return
     if (filteredSkills.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()

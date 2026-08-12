@@ -74,7 +74,7 @@ export function Chat({
   // Handle send - if there's a pending ask_user, respond to it; otherwise send normally
   const handleSend = useCallback((content: string, images?: string[], files?: import('./types').FileAttachment[]) => {
     if (pendingAskUser && onAskUserResponse) {
-      onAskUserResponse(content)
+      onAskUserResponse(content, images, files)
     } else {
       onSend(content, images, files)
     }
