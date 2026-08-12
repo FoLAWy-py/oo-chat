@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAgentForHuman, type AgentInfo, type ChatItem, type ApprovalMode } from '@connectonion/react'
-import type { PendingAskUser, PendingApproval, PendingOnboard, PendingUlwTurnsReached, PendingPlanReview } from './types'
+import type { FileAttachment, PendingAskUser, PendingApproval, PendingOnboard, PendingUlwTurnsReached, PendingPlanReview } from './types'
 import { dedupeUI } from './dedupe-ui'
+import { stopServerSession } from './session-lifecycle'
 
 /** Session lifecycle state */
 export type SessionActiveState = 'idle' | 'connected' | 'active' | 'disconnected' | 'reconnecting'
@@ -30,6 +31,7 @@ interface UseAgentSDKReturn {
   ui: ChatItem[]
   isConnected: boolean
   isLoading: boolean
+  isStopping: boolean
   pendingAskUser: PendingAskUser | null
   pendingApproval: PendingApproval | null
   pendingOnboard: PendingOnboard | null
@@ -48,7 +50,7 @@ interface UseAgentSDKReturn {
   send: (content: string, images?: string[], files?: import('./types').FileAttachment[]) => void
   /** Gracefully stop a running agent: it finishes the current step and returns a closing message */
   interrupt: () => void
-  respondToAskUser: (answer: string | string[]) => void
+  respondToAskUser: (answer: string | string[], images?: string[], files?: FileAttachment[]) => void
   respondToApproval: (approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => void
   respondToUlwTurnsReached: (action: 'continue' | 'switch_mode', options?: { turns?: number; mode?: ApprovalMode }) => void
   respondToPlanReview: (message: string) => void
@@ -176,7 +178,18 @@ function stopRunningItems(ui: ChatItem[]): ChatItem[] {
 }
 
 function hasActiveRestoredItem(ui: ChatItem[]): boolean {
-  return ui.some((item) => {
+  // A restored transcript may keep a historical tool marked as running even
+  // though a later assistant message already closed that turn. Only activity
+  // after the latest assistant message can still belong to the current run.
+  let latestAgentIndex = -1
+  for (let index = ui.length - 1; index >= 0; index -= 1) {
+    if (ui[index].type === 'agent') {
+      latestAgentIndex = index
+      break
+    }
+  }
+
+  return ui.slice(latestAgentIndex + 1).some((item) => {
     switch (item.type) {
       case 'thinking':
       case 'tool_call':
@@ -191,6 +204,16 @@ function hasActiveRestoredItem(ui: ChatItem[]): boolean {
         return false
     }
   })
+}
+
+function hasUnansweredUserTurn(ui: ChatItem[]): boolean {
+  let latestUserIndex = -1
+  let latestAgentIndex = -1
+  ui.forEach((item, index) => {
+    if (item.type === 'user') latestUserIndex = index
+    if (item.type === 'agent') latestAgentIndex = index
+  })
+  return latestUserIndex > latestAgentIndex
 }
 
 export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
@@ -239,7 +262,13 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
     return stopRequested ? stopRunningItems(items) : items
   }, [ui, stopRequested])
   const hasActiveUI = useMemo(() => hasActiveRestoredItem(cleanUI), [cleanUI])
-  const isLoading = (isProcessing || hasActiveUI) && !stopRequested
+  const hasUnansweredTurn = useMemo(() => hasUnansweredUserTurn(cleanUI), [cleanUI])
+  // Stop is not complete when the button is clicked. Keep the composer locked
+  // until the closing event arrives, otherwise a second prompt can race the run
+  // that is still unwinding on the server.
+  const isLoading = (
+    isProcessing && (hasUnansweredTurn || hasActiveUI)
+  ) || hasActiveUI || stopRequested
 
   // The run ended for real (closing message arrived, or a fresh run started and
   // finished) — hand the UI back to the SDK's event stream. Adjust-during-render
@@ -315,9 +344,13 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
 
   // Send message
   const send = useCallback((content: string, images?: string[], files?: import('./types').FileAttachment[]) => {
+    // A reconnect can retain the interrupted turn's `working` flag even though
+    // the new socket is ready. Only an explicit Stop is a hard send barrier: in
+    // that case the previous run is known to be unwinding and must finish first.
+    if (stopRequested) return
     setStopRequested(false)
     input(content, { images, files })
-  }, [input])
+  }, [input, stopRequested])
 
   // Stop: the UI stops immediately (optimistic — spinners freeze, the input
   // returns to send mode), while the agent-side poll_interrupt handler drains
@@ -329,12 +362,28 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
   const interrupt = useCallback(() => {
     setStopRequested(true)
     if (connectionState === 'connected') {
-      sendMessage({ type: 'INTERRUPT' })
+      try {
+        sendMessage({ type: 'INTERRUPT' })
+      } catch {
+        // The HTTP fallback below also covers a socket that closed between the
+        // connection-state render and this click.
+      }
     }
-  }, [sendMessage, connectionState])
+    void stopServerSession(sessionId).then(delivered => {
+      // A restored transcript can look active after the server run has already
+      // gone. Do not leave that session permanently locked when neither path had
+      // a running session to interrupt.
+      if (!delivered && status === 'idle') setStopRequested(false)
+    })
+  }, [sendMessage, connectionState, sessionId, status])
 
-  const respondToAskUser = useCallback((answer: string | string[]) => {
-    sendMessage({ type: 'ASK_USER_RESPONSE', answer: Array.isArray(answer) ? answer.join(', ') : answer })
+  const respondToAskUser = useCallback((answer: string | string[], images?: string[], files?: FileAttachment[]) => {
+    sendMessage({
+      type: 'ASK_USER_RESPONSE',
+      answer: Array.isArray(answer) ? answer.join(', ') : answer,
+      ...(images?.length && { images }),
+      ...(files?.length && { files }),
+    })
   }, [sendMessage])
 
   const respondToApproval = useCallback((approved: boolean, scope: 'once' | 'session', mode?: 'reject_soft' | 'reject_hard' | 'reject_explain', feedback?: string) => {
@@ -383,6 +432,7 @@ export function useAgentSDK(options: UseAgentSDKOptions): UseAgentSDKReturn {
     ui: cleanUI,
     isConnected,
     isLoading,
+    isStopping: stopRequested,
     pendingAskUser,
     pendingApproval,
     pendingOnboard,

@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { HiOutlinePlus, HiOutlineStatusOnline, HiOutlineStatusOffline } from 'react-icons/hi'
 import { ChatLayout } from '@/components/chat-layout'
@@ -16,6 +16,7 @@ export default function Home() {
   const [newAddress, setNewAddress] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
   const [addressError, setAddressError] = useState('')
+  const deploymentBindingStarted = useRef(false)
 
   const handleAddressChange = (value: string) => {
     setNewAddress(value)
@@ -23,6 +24,31 @@ export default function Home() {
   }
 
   useIdentity()
+
+  // A dedicated deployment exposes its bundled agent through this same-origin
+  // endpoint. Generic oo-chat installations simply return a non-2xx response
+  // and keep the normal address picker below.
+  useEffect(() => {
+    if (deploymentBindingStarted.current) return
+    deploymentBindingStarted.current = true
+    const controller = new AbortController()
+
+    fetch('/api/deployment', { cache: 'no-store', signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) return null
+        return response.json() as Promise<{ address?: string }>
+      })
+      .then(deployment => {
+        if (!deployment?.address || !isAgentAddress(deployment.address)) return
+        addAgent(deployment.address)
+        router.replace(`/${deployment.address}`)
+      })
+      .catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+      })
+
+    return () => controller.abort()
+  }, [addAgent, router])
 
   const handleAddAgent = (address: string) => {
     const trimmed = address.trim()
